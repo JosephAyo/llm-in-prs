@@ -1,0 +1,10 @@
+gql[requests]
+pandas
+python-dateutil # Remove if not using advanced date/time features from dateutil
+requests # Redundant with gql[requests] but including it for clarity. Pip handles this correctly.
+tqdm
+papermill
+jupyter
+ipykernel
+python-daemon
+types-requests
