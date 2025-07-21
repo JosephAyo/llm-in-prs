@@ -5,6 +5,9 @@ from unittest.mock import patch, mock_open, MagicMock
 from io import StringIO
 from http import HTTPStatus
 import detection_on_spam_prs  # rename this to your actual script file name, e.g., spam_detection
+from unittest.mock import mock_open, MagicMock
+import builtins
+from unittest.mock import patch, mock_open, MagicMock
 
 
 @pytest.fixture
@@ -97,7 +100,7 @@ def test_logging(mock_file):
     Tests that the log_activity function correctly opens the log file and writes a log entry.
     """
     detection_on_spam_prs.log_activity("Test log entry")
-    mock_file.assert_called_once_with(detection_on_spam_prs.log_path, "a")
+    mock_file.assert_called_once_with(detection_on_spam_prs.LOG_PATH, "a")
     mock_file().write.assert_called_once()
 
 
@@ -124,3 +127,57 @@ def test_progress_saving(mock_open_file, mock_pickle):
     df = [{"id": "PR1", "zerogpt_response": "test"}]
     detection_on_spam_prs.pickle.dump({"df": df}, mock_open_file())
     mock_pickle.assert_called_once()
+
+
+
+
+def multi_open(file, mode="r", *args, **kwargs):
+    if file == "./env/zero-gpt-tokens.txt":
+        m = mock_open(read_data="token1\ntoken2\n").return_value
+        m.__iter__.return_value = "token1\ntoken2\n".splitlines(True)
+        return m
+    elif file == detection_on_spam_prs.INPUT_CSV_PATH:
+        csv_content = (
+            "id,body,repository_name_with_owner,url,created_at,updated_at\n"
+            "PR1," + ("a" * 300) + ",owner/repo,http://url,2021-01-01,2021-01-02\n"
+        )
+        m = mock_open(read_data=csv_content).return_value
+        m.__iter__.return_value = csv_content.splitlines(True)
+        return m
+    elif file == "./datasets/spam_prs/spam_prs-detection-progress.pkl":
+        m = mock_open(read_data=b"fake binary data").return_value
+        return m
+    elif file == "./datasets/spam_prs/spam_prs-detection-output.log":
+        # mock log file for append mode
+        m = mock_open().return_value
+        return m
+    else:
+        raise FileNotFoundError(f"Unmocked file: {file}")
+
+
+@patch("detection_on_spam_prs.open", side_effect=multi_open)
+@patch("detection_on_spam_prs.requests.post")
+@patch("detection_on_spam_prs.pickle.load")
+@patch("detection_on_spam_prs.pickle.dump")
+@patch("detection_on_spam_prs.pd.DataFrame.to_csv")
+@patch("detection_on_spam_prs.time.sleep", return_value=None)
+def test_run_detection_retries(
+    mock_sleep, mock_to_csv, mock_pickle_dump, mock_pickle_load, mock_post, mock_open
+):
+    # Setup mocks for API post etc.
+    fail_response = MagicMock()
+    fail_response.json.return_value = {"code": 500}
+    success_response = MagicMock()
+    success_response.json.return_value = {"code": 200, "result": "Human"}
+
+    mock_post.side_effect = [fail_response, fail_response, success_response]
+    mock_pickle_load.side_effect = (
+        FileNotFoundError  # simulate fresh start - no progress saved yet
+    )
+
+    detection_on_spam_prs.run_detection(max_retries=3, retry_wait_seconds=0)
+
+    assert mock_post.call_count >= 3
+    assert mock_pickle_dump.called
+    assert mock_to_csv.called
+    assert mock_sleep.called
