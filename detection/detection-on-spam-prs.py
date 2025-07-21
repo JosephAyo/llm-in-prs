@@ -1,11 +1,13 @@
 # RUN detection tool on already labeled spam PRs
 import csv
+from http import HTTPStatus
 import json
 import requests
 import itertools
 import random
 import os
 import datetime
+from http import HTTPStatus
 
 # Read tokens from a text file
 tokens_file = "./env/zero-gpt-tokens.txt"
@@ -45,6 +47,7 @@ def log_activity(activity: str):
 def is_significant(text, min_chars=250):
     return text and len(text.strip()) >= min_chars
 
+
 # Read input and prepare to write output
 with open(input_csv_path, mode="r", encoding="utf-8") as input_file, open(
     output_csv_path, mode="w", encoding="utf-8", newline=""
@@ -53,10 +56,8 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file, open(
     reader = csv.DictReader(input_file)
 
     # Filter only significant rows first, then take first 20
-    significant_rows = (
-        row for row in reader if is_significant(row.get("body", ""))
-    )
-    rows = itertools.islice(significant_rows, 10)
+    significant_rows = (row for row in reader if is_significant(row.get("body", "")))
+    rows = itertools.islice(significant_rows, 1)
     writer = csv.DictWriter(
         output_file,
         fieldnames=[
@@ -87,11 +88,19 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file, open(
             response = requests.post(url, headers=headers, data=payload)
             response_data = response.json()
             zerogpt_response = json.dumps(response_data)
+            status_code = response_data.get("code")
+
+            # Ensure status code is 200 OK
+            if status_code != HTTPStatus.OK:
+                raise Exception(f"Detection failed: {status_code}")
+
         except Exception as e:
             zerogpt_response = f"Error: {e}"
             log_activity(f"Error processing row id {row.get('id', '')}: {e}")
         else:
             log_activity(f"Successfully processed row id {row.get('id', '')}")
+
+        # Write results to CSV
         output_row = {
             "id": row.get("id", ""),
             "repository_name_with_owner": row.get("repository_name_with_owner", ""),
