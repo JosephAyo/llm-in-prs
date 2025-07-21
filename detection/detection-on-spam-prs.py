@@ -8,17 +8,9 @@ import itertools
 import random
 import os
 import datetime
-from http import HTTPStatus
-import csv
-import json
-import os
 import pickle
-import random
-import requests
-import datetime
-import itertools
+import time
 import pandas as pd
-from http import HTTPStatus
 
 # Increase the maximum field size limit
 csv.field_size_limit(sys.maxsize)
@@ -52,7 +44,6 @@ if os.path.exists(progress_pkl_path):
         progress_data = pickle.load(f)
         df_list = progress_data["df"]
 
-        # Deduplicate by 'id'
         if isinstance(df_list, list):
             df = pd.DataFrame(df_list)
         elif isinstance(df_list, pd.DataFrame):
@@ -82,19 +73,15 @@ def is_significant(text, min_chars=250):
 
 # Read input and write output
 new_rows = []
-# Set seed for reproducibility
 random.seed(42)
 
-# Load and shuffle rows
 with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
     reader = list(csv.DictReader(input_file))
-
-    # Only keep significant rows
     significant_rows = [row for row in reader if is_significant(row.get("body", ""))]
-
-    # Shuffle and pick first 100
     random.shuffle(significant_rows)
-    significant_rows = significant_rows[:100]
+    significant_rows = significant_rows[:20]
+
+    failed_ids = set()
 
     for row in significant_rows:
         row_id = str(row.get("id", ""))
@@ -118,12 +105,12 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
             code = response_data.get("code")
             if code != HTTPStatus.OK:
                 raise Exception(f"Detection failed: {code}")
-
-            log_activity(f"✅ Row ID {row_id} processed.")
+            log_activity(f"\u2705 Row ID {row_id} processed.")
 
         except Exception as e:
             zerogpt_response = f"Error: {e}"
-            log_activity(f"❌ Error on row ID {row_id}: {e}")
+            failed_ids.add(row_id)
+            log_activity(f"\u274c Error on row ID {row_id}: {e}")
 
         output_row = {
             "id": row_id,
@@ -137,20 +124,85 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
 
         new_rows.append(output_row)
         df = pd.concat([df, pd.DataFrame([output_row])], ignore_index=True)
+        processed_ids.add(row_id)
 
-        # Periodically save progress
+        if len(new_rows) % 4 == 0:
+            with open(progress_pkl_path, "wb") as f:
+                pickle.dump({"df": df.to_dict(orient="records")}, f)
+            log_activity("\U0001f4be Progress saved.")
+
+# Retry logic
+MAX_RETRIES = 20
+RETRY_DELAY = 15 * 60  # 15 minutes
+
+for attempt in range(1, MAX_RETRIES + 1):
+    if not failed_ids:
+        break
+
+    log_activity(
+        f"\U0001f501 Retry attempt {attempt}: Retrying {len(failed_ids)} failed PRs after waiting {RETRY_DELAY // 60} minutes..."
+    )
+    time.sleep(RETRY_DELAY)
+    current_failed = failed_ids.copy()
+    failed_ids.clear()
+
+    for row in significant_rows:
+        row_id = str(row.get("id", ""))
+        if row_id not in current_failed or row_id in processed_ids:
+            continue
+
+        description = row.get("body", "")
+        zerogpt_response = ""
+
+        current_token = next(token_iterator)
+        payload = json.dumps({"input_text": description})
+        headers = {
+            "ApiKey": current_token,
+            "Content-Type": "application/json",
+        }
+
+        try:
+            response = requests.post(url, headers=headers, data=payload)
+            response_data = response.json()
+            zerogpt_response = json.dumps(response_data)
+            code = response_data.get("code")
+            if code != HTTPStatus.OK:
+                raise Exception(f"Detection failed: {code}")
+            log_activity(f"\u2705 Retry success: Row ID {row_id} processed.")
+
+        except Exception as e:
+            zerogpt_response = f"Error: {e}"
+            failed_ids.add(row_id)
+            log_activity(f"\u274c Retry error on row ID {row_id}: {e}")
+            continue
+
+        output_row = {
+            "id": row_id,
+            "repository_name_with_owner": row.get("repository_name_with_owner", ""),
+            "description": description,
+            "url": row.get("url", ""),
+            "created_at": row.get("created_at", ""),
+            "updated_at": row.get("updated_at", ""),
+            "zerogpt_response": zerogpt_response,
+        }
+
+        new_rows.append(output_row)
+        df = pd.concat([df, pd.DataFrame([output_row])], ignore_index=True)
+        processed_ids.add(row_id)
+
         if len(new_rows) % 10 == 0:
             with open(progress_pkl_path, "wb") as f:
                 pickle.dump({"df": df.to_dict(orient="records")}, f)
-            log_activity("💾 Progress saved.")
+            log_activity("\U0001f4be Retry progress saved.")
 
 # Final save
 with open(progress_pkl_path, "wb") as f:
     pickle.dump({"df": df.to_dict(orient="records")}, f)
 
-# Write full CSV
 df.drop_duplicates(subset="id", keep="first").to_csv(
     output_csv_path, index=False, encoding="utf-8"
 )
 
-log_activity(f"✅ Detection finished. Output saved to {output_csv_path}")
+log_activity(
+    f"\u2705 Detection finished with retry logic. Output saved to {output_csv_path}"
+)
