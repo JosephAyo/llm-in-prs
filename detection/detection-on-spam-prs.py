@@ -8,72 +8,85 @@ import random
 import os
 import datetime
 from http import HTTPStatus
+import csv
+import json
+import os
+import pickle
+import random
+import requests
+import datetime
+import itertools
+import pandas as pd
+from http import HTTPStatus
 
-# Read tokens from a text file
+# Load API tokens
 tokens_file = "./env/zero-gpt-tokens.txt"
 with open(tokens_file, "r") as file:
     tokens = file.read().splitlines()
 
-# Choose a random start index
+# Rotate tokens randomly
 start_index = random.randint(0, len(tokens) - 1)
-
-# Rotate the tokens list starting at a random position
 rotated_tokens = tokens[start_index:] + tokens[:start_index]
-
-# Create an infinite cycle iterator from the rotated list
 token_iterator = itertools.cycle(rotated_tokens)
 
-# Define API endpoint
+# API endpoint
 url = "https://api.zerogpt.com/api/detect/detectText"
 
-# CSV input and output file paths
+# Dataset paths
 dataset_name = "spam_prs"
 input_csv_path = f"./datasets/{dataset_name}/{dataset_name}.csv"
 output_csv_path = f"./datasets/{dataset_name}/{dataset_name}-detection.csv"
+progress_pkl_path = f"./datasets/{dataset_name}/{dataset_name}-detection-progress.pkl"
+log_path = f"./datasets/{dataset_name}/{dataset_name}-detection-output.log"
 
 # Ensure output directory exists
 os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
 
+# Resume from previous progress if available
+if os.path.exists(progress_pkl_path):
+    with open(progress_pkl_path, "rb") as f:
+        progress_data = pickle.load(f)
+        df_list = progress_data["df"]
 
+        # Deduplicate by 'id'
+        if isinstance(df_list, list):
+            df = pd.DataFrame(df_list)
+        elif isinstance(df_list, pd.DataFrame):
+            df = df_list
+        else:
+            df = pd.DataFrame()
+
+        df = df.drop_duplicates(subset="id", keep="first")
+        processed_ids = set(df["id"].astype(str))
+    print(f"Resuming. {len(processed_ids)} entries already processed.")
+else:
+    df = pd.DataFrame()
+    processed_ids = set()
+
+
+# Logging helper
 def log_activity(activity: str):
     log = f"{datetime.datetime.now()}: {activity}\n"
-    # print(log)
-    with open(
-        f"./datasets/{dataset_name}/{dataset_name}-detection-output.log", "a"
-    ) as log_file:
+    with open(log_path, "a") as log_file:
         log_file.write(log)
 
 
+# Filter logic
 def is_significant(text, min_chars=250):
     return text and len(text.strip()) >= min_chars
 
 
-# Read input and prepare to write output
-with open(input_csv_path, mode="r", encoding="utf-8") as input_file, open(
-    output_csv_path, mode="w", encoding="utf-8", newline=""
-) as output_file:
-
+# Read input and write output
+new_rows = []
+with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
     reader = csv.DictReader(input_file)
-
-    # Filter only significant rows first, then take first 20
     significant_rows = (row for row in reader if is_significant(row.get("body", "")))
-    rows = itertools.islice(significant_rows, 1)
-    writer = csv.DictWriter(
-        output_file,
-        fieldnames=[
-            "id",
-            "repository_name_with_owner",
-            "url",
-            "created_at",
-            "updated_at",
-            "description",
-            "zerogpt_response",
-        ],
-    )
 
-    writer.writeheader()
+    for row in significant_rows:
+        row_id = str(row.get("id", ""))
+        if row_id in processed_ids:
+            continue
 
-    for row in rows:
         description = row.get("body", "")
         zerogpt_response = ""
 
@@ -88,21 +101,18 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file, open(
             response = requests.post(url, headers=headers, data=payload)
             response_data = response.json()
             zerogpt_response = json.dumps(response_data)
-            status_code = response_data.get("code")
 
-            # Ensure status code is 200 OK
-            if status_code != HTTPStatus.OK:
-                raise Exception(f"Detection failed: {status_code}")
+            if response.status_code != HTTPStatus.OK:
+                raise Exception(f"Detection failed: {response.status_code}")
+
+            log_activity(f"✅ Row ID {row_id} processed.")
 
         except Exception as e:
             zerogpt_response = f"Error: {e}"
-            log_activity(f"Error processing row id {row.get('id', '')}: {e}")
-        else:
-            log_activity(f"Successfully processed row id {row.get('id', '')}")
+            log_activity(f"❌ Error on row ID {row_id}: {e}")
 
-        # Write results to CSV
         output_row = {
-            "id": row.get("id", ""),
+            "id": row_id,
             "repository_name_with_owner": row.get("repository_name_with_owner", ""),
             "description": description,
             "url": row.get("url", ""),
@@ -110,4 +120,23 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file, open(
             "updated_at": row.get("updated_at", ""),
             "zerogpt_response": zerogpt_response,
         }
-        writer.writerow(output_row)
+
+        new_rows.append(output_row)
+        df = pd.concat([df, pd.DataFrame([output_row])], ignore_index=True)
+
+        # Periodically save progress
+        if len(new_rows) % 10 == 0:
+            with open(progress_pkl_path, "wb") as f:
+                pickle.dump({"df": df.to_dict(orient="records")}, f)
+            log_activity("💾 Progress saved.")
+
+# Final save
+with open(progress_pkl_path, "wb") as f:
+    pickle.dump({"df": df.to_dict(orient="records")}, f)
+
+# Write full CSV
+df.drop_duplicates(subset="id", keep="first").to_csv(
+    output_csv_path, index=False, encoding="utf-8"
+)
+
+log_activity(f"✅ Detection finished. Output saved to {output_csv_path}")
