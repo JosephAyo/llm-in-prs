@@ -115,9 +115,9 @@ with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
             response = requests.post(url, headers=headers, data=payload)
             response_data = response.json()
             zerogpt_response = json.dumps(response_data)
-
-            if response.status_code != HTTPStatus.OK:
-                raise Exception(f"Detection failed: {response.status_code}")
+            code = response_data.get("code")
+            if code != HTTPStatus.OK:
+                raise Exception(f"Detection failed: {code}")
 
             log_activity(f"✅ Row ID {row_id} processed.")
 
