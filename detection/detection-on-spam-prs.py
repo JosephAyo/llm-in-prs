@@ -2,6 +2,7 @@
 import csv
 from http import HTTPStatus
 import json
+import sys
 import requests
 import itertools
 import random
@@ -18,6 +19,9 @@ import datetime
 import itertools
 import pandas as pd
 from http import HTTPStatus
+
+# Increase the maximum field size limit
+csv.field_size_limit(sys.maxsize)
 
 # Load API tokens
 tokens_file = "./env/zero-gpt-tokens.txt"
@@ -78,9 +82,19 @@ def is_significant(text, min_chars=250):
 
 # Read input and write output
 new_rows = []
+# Set seed for reproducibility
+random.seed(42)
+
+# Load and shuffle rows
 with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
-    reader = csv.DictReader(input_file)
-    significant_rows = (row for row in reader if is_significant(row.get("body", "")))
+    reader = list(csv.DictReader(input_file))
+
+    # Only keep significant rows
+    significant_rows = [row for row in reader if is_significant(row.get("body", ""))]
+
+    # Shuffle and pick first 100
+    random.shuffle(significant_rows)
+    significant_rows = significant_rows[:100]
 
     for row in significant_rows:
         row_id = str(row.get("id", ""))
