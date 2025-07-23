@@ -125,6 +125,7 @@ def run_detection(
                 "id": row_id,
                 "repository_name_with_owner": row.get("repository_name_with_owner", ""),
                 "description": description,
+                "labels": row.get("labels", ""),
                 "url": row.get("url", ""),
                 "created_at": row.get("created_at", ""),
                 "updated_at": row.get("updated_at", ""),
