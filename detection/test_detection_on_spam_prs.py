@@ -144,10 +144,10 @@ def multi_open(file, mode="r", *args, **kwargs):
         m = mock_open(read_data=csv_content).return_value
         m.__iter__.return_value = csv_content.splitlines(True)
         return m
-    elif file == "./datasets/spam_prs/spam_prs-detection-progress.pkl":
+    elif file == "./datasets/copilot-prs/copilot-prs-detection-progress.pkl":
         m = mock_open(read_data=b"fake binary data").return_value
         return m
-    elif file == "./datasets/spam_prs/spam_prs-detection-output.log":
+    elif file == "./datasets/copilot-prs/copilot-prs-detection-output.log":
         # mock log file for append mode
         m = mock_open().return_value
         return m

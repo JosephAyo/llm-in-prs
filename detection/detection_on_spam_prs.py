@@ -17,7 +17,7 @@ csv.field_size_limit(sys.maxsize)
 
 # Constants / Paths
 TOKENS_FILE = "./env/zero-gpt-tokens.txt"
-DATASET_NAME = "spam_prs"
+DATASET_NAME = "copilot-prs"
 INPUT_CSV_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}.csv"
 OUTPUT_CSV_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection.csv"
 PROGRESS_PKL_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection-progress.pkl"
@@ -82,10 +82,10 @@ def run_detection(
 
     significant_rows = [row for row in reader if is_significant(row.get("body", ""))]
 
-    random.seed(12345)  # fixed seed for deterministic shuffle
-    random.shuffle(significant_rows)
+    # random.seed(12345)  # fixed seed for deterministic shuffle
+    # random.shuffle(significant_rows)
 
-    significant_rows = significant_rows[:batch_size]
+    # significant_rows = significant_rows[:batch_size]
     rows_to_process = [
         row for row in significant_rows if str(row.get("id", "")) not in processed_ids
     ]
@@ -95,11 +95,11 @@ def run_detection(
         new_rows = []
         for row in rows_to_process:
             row_id = str(row.get("id", ""))
-            description = row.get("body", "")
+            input_text = row.get("title", "")+'\n'+ row.get("body", "")
             zerogpt_response = ""
 
             current_token = next(token_iterator)
-            payload = json.dumps({"input_text": description})
+            payload = json.dumps({"input_text": input_text})
             headers = {
                 "ApiKey": current_token,
                 "Content-Type": "application/json",
@@ -124,7 +124,8 @@ def run_detection(
             output_row = {
                 "id": row_id,
                 "repository_name_with_owner": row.get("repository_name_with_owner", ""),
-                "description": description,
+                "input_text": input_text,
+                "author_name": row.get("author_name", ""),
                 "labels": row.get("labels", ""),
                 "url": row.get("url", ""),
                 "created_at": row.get("created_at", ""),
