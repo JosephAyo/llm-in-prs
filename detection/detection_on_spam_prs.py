@@ -17,7 +17,7 @@ csv.field_size_limit(sys.maxsize)
 
 # Constants / Paths
 TOKENS_FILE = "./env/zero-gpt-tokens.txt"
-DATASET_NAME = "copilot-prs"
+DATASET_NAME = "llm-prs"
 INPUT_CSV_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}.csv"
 OUTPUT_CSV_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection.csv"
 PROGRESS_PKL_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection-progress.pkl"
@@ -121,17 +121,10 @@ def run_detection(
                 log_activity(f"❌ Error on row ID {row_id}: {e}")
                 continue  # Skip on error
 
-            output_row = {
-                "id": row_id,
-                "repository_name_with_owner": row.get("repository_name_with_owner", ""),
-                "input_text": input_text,
-                "author_name": row.get("author_name", ""),
-                "labels": row.get("labels", ""),
-                "url": row.get("url", ""),
-                "created_at": row.get("created_at", ""),
-                "updated_at": row.get("updated_at", ""),
-                "zerogpt_response": zerogpt_response,
-            }
+            # Dynamically build output row
+            output_row = dict(row)
+            output_row["input_text"] = input_text
+            output_row["zerogpt_response"] = zerogpt_response
 
             new_rows.append(output_row)
 
