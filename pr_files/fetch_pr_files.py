@@ -12,14 +12,18 @@ import random
 # === Config ===
 CSV_FILE = "./datasets/random_significant_prs.csv"
 PICKLE_FILE = "./datasets/progress.pkl"
-TOKENS_FILE = "./env/tokens.txt"  # Each line should have one GitHub token
-REQUEST_DELAY = 1.0  # seconds between requests
-LOG_PATH = f"./datasets/output.log"
+TOKENS_FILE = "./env/tokens.txt"
+REQUEST_DELAY = 1.0
+LOG_PATH = "./datasets/output.log"
+JSON_OUTPUT = "./datasets/pr_files_output.json"
+CSV_OUTPUT = "./datasets/pr_files_output.csv"
+
 
 def log_activity(activity: str, log_path=LOG_PATH):
     log = f"{datetime.datetime.now()}: {activity}\n"
     with open(log_path, "a") as log_file:
         log_file.write(log)
+
 
 # === Load Tokens ===
 def load_tokens(tokens_file):
@@ -53,45 +57,89 @@ if os.path.exists(PICKLE_FILE):
 else:
     progress = {}
 
-# === Process each PR ===
-for i, (_, row) in enumerate(df[:2].iterrows()):
-    search_repository, pull_number = row["search_repository"], row["pull_number"]
-    key = f"{search_repository}#{pull_number}"
-    if key in progress:
-        log_activity(f"[{(i)+1}/{len(df)}] Skipping already processed {key}")
-        continue
 
-    url = f"https://api.github.com/repos/{search_repository}/pulls/{pull_number}/files"
-
-    for _ in range(len(all_tokens)):
+# === Fetch PR Files with Pagination ===
+def fetch_pr_files(repo, pr_number, token_cycle):
+    all_files = []
+    page = 1
+    while True:
         token = next(token_cycle)
         headers = {"Authorization": f"Bearer {token}"}
-        log_activity(f"[{(i)+1}/{len(df)}] Fetching {key} with token ...")
+        url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files?per_page=100&page={page}"
+
         try:
             resp = requests.get(url, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
-                progress[key] = data
-                with open(PICKLE_FILE, "wb") as f:
-                    pickle.dump(progress, f)
-                break  # successful
+                all_files.extend(data)
+                if len(data) < 100:
+                    break  # last page
+                else:
+                    page += 1
+                    time.sleep(REQUEST_DELAY)
             elif resp.status_code == 403 and "rate limit" in resp.text.lower():
                 log_activity("Rate limit hit, switching token...")
-                continue  # try next token
+                continue
             else:
-                log_activity(f"Failed ({resp.status_code}): {resp.json().get('message')}")
-                break  # don't retry if not rate limit
+                log_activity(
+                    f"Failed ({resp.status_code}) on {repo}#{pr_number}: {resp.json().get('message')}"
+                )
+                break
         except requests.RequestException as e:
-            log_activity(f"Request failed: {e}")
-            continue
+            log_activity(f"Request failed for {repo}#{pr_number}: {e}")
+            break
+
+    return all_files
+
+
+# === Process PRs ===
+for i, (_, row) in enumerate(df.iterrows()):
+    search_repository, pull_number = row["search_repository"], row["pull_number"]
+    key = f"{search_repository}#{pull_number}"
+    if key in progress:
+        log_activity(f"[{i + 1}/{len(df)}] Skipping already processed {key}")
+        continue
+
+    log_activity(f"[{i + 1}/{len(df)}] Fetching {key} ...")
+    pr_files = fetch_pr_files(search_repository, pull_number, token_cycle)
+
+    if pr_files:
+        progress[key] = pr_files
+        with open(PICKLE_FILE, "wb") as f:
+            pickle.dump(progress, f)
+        log_activity(f"✓ Saved progress for {key} ({len(pr_files)} files)")
+    else:
+        log_activity(f"⚠️ No files fetched for {key}")
 
     time.sleep(REQUEST_DELAY)
 
-log_activity(f"\n✅ Done. Fetched data for {len(progress)}, PRs.")
+log_activity(f"✅ Done. Fetched data for {len(progress)} PRs.")
 
-# === Save to JSON file ===
-save_file = './datasets/pr_files_output.json'
-with open(save_file, "w") as f:
+# === Save to JSON ===
+with open(JSON_OUTPUT, "w") as f:
     json.dump(progress, f, indent=2)
+log_activity(f"📁 Saved JSON results to {JSON_OUTPUT}")
 
-log_activity(f"Saved results to {save_file}")
+# === Save to CSV ===
+csv_rows = []
+for key, files in progress.items():
+    repo, pr_number = key.split("#")
+    for f in files:
+        csv_rows.append(
+            {
+                "repository": repo,
+                "pr_number": pr_number,
+                "filename": f.get("filename"),
+                "status": f.get("status"),
+                "additions": f.get("additions"),
+                "deletions": f.get("deletions"),
+                "changes": f.get("changes"),
+                "sha": f.get("sha"),
+                "blob_url": f.get("blob_url"),
+                "raw_url": f.get("raw_url"),
+                "patch": f.get("patch", None),
+            }
+        )
+
+pd.DataFrame(csv_rows).to_csv(CSV_OUTPUT, index=False)
+log_activity(f"📄 Saved CSV results to {CSV_OUTPUT}")
