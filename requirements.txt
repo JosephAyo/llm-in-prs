@@ -9,3 +9,4 @@ ipykernel
 python-daemon
 types-requests
 pytest
+openai
