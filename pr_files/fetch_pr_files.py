@@ -94,7 +94,14 @@ def fetch_pr_files(repo, pr_number, token_cycle):
 
 # === Process PRs ===
 for i, (_, row) in enumerate(df.iterrows()):
-    search_repository, pull_number = row["search_repository"], row["pull_number"]
+    search_repository, pull_number, id, title, description, state = (
+        row["search_repository"],
+        row["pull_number"],
+        row["id"],
+        row["title"],
+        row["body"],
+        row["state"],
+    )
     key = f"{search_repository}#{pull_number}"
     if key in progress:
         log_activity(f"[{i + 1}/{len(df)}] Skipping already processed {key}")
@@ -104,7 +111,15 @@ for i, (_, row) in enumerate(df.iterrows()):
     pr_files = fetch_pr_files(search_repository, pull_number, token_cycle)
 
     if pr_files:
-        progress[key] = pr_files
+        progress[key] = {
+            "id": id,
+            "title": title,
+            "description": description,
+            "state": state,
+            "repository": search_repository,
+            "pull_number": pull_number,
+            "files": pr_files
+        }
         with open(PICKLE_FILE, "wb") as f:
             pickle.dump(progress, f)
         log_activity(f"✓ Saved progress for {key} ({len(pr_files)} files)")
@@ -122,15 +137,26 @@ log_activity(f"📁 Saved JSON results to {JSON_OUTPUT}")
 
 # === Save to CSV ===
 csv_rows = []
-for key, files in progress.items():
-    repo, pr_number = key.split("#")
+for key, pr_data in progress.items():
+    files = pr_data.get("files", [])
+    pr_id = pr_data.get("id")
+    pr_title = pr_data.get("title")
+    pr_description = pr_data.get("description")
+    pr_state = pr_data.get("state")
+    repo = pr_data.get("repository")
+    pr_number = pr_data.get("pull_number")
+    
     for f in files:
         csv_rows.append(
             {
+                "id": pr_id,
+                "title": pr_title,
+                "description": pr_description,
+                "state": pr_state,
                 "repository": repo,
                 "pr_number": pr_number,
                 "filename": f.get("filename"),
-                "status": f.get("status"),
+                "state": f.get("state"),
                 "additions": f.get("additions"),
                 "deletions": f.get("deletions"),
                 "changes": f.get("changes"),
