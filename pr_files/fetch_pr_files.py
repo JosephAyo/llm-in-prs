@@ -10,13 +10,13 @@ import itertools
 import random
 
 # === Config ===
-CSV_FILE = "./datasets/few_shot_example_prs.csv"
-PICKLE_FILE = "./datasets/few_shot_example_progress.pkl"
+CSV_FILE = "./datasets/random_significant_prs.csv"
+PICKLE_FILE = "./datasets/progress.pkl"
 TOKENS_FILE = "./env/tokens.txt"
 REQUEST_DELAY = 1.0
 LOG_PATH = "./datasets/output.log"
-JSON_OUTPUT = "./datasets/few_shot_example_pr_files_output.json"
-CSV_OUTPUT = "./datasets/few_shot_example_pr_files_output.csv"
+JSON_OUTPUT = "./datasets/pr_files_output.json"
+CSV_OUTPUT = "./datasets/pr_files_output.csv"
 
 
 def log_activity(activity: str, log_path=LOG_PATH):
