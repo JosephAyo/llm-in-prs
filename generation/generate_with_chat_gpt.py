@@ -1,5 +1,6 @@
 import csv
 import datetime
+import json
 import openai
 import time
 from collections import defaultdict
@@ -13,6 +14,7 @@ MODE = "zero"  # choose: "zero", "one", "few"
 EXAMPLE_FILE = "../pr_files/datasets/few_shot_example_pr_files_output.csv"
 TARGET_FILE = "../pr_files/datasets/pr_files_output.csv"
 OUTPUT_FILE = "./datasets/generated_title_and_pr.csv"
+OUTPUT_JSON_FILE = "./datasets/generated_title_and_pr.json"
 LOG_PATH = "./datasets/output.log"
 MAX_EXAMPLES = {"zero": 0, "one": 1, "few": 3}[MODE]
 MAX_PROMPT_TOKENS = 8000  # Leave room below 10k TPM
@@ -227,12 +229,15 @@ def process_all_prs():
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
     out_fields = list(fieldnames or []) + ["generated_title", "generated_description"]
+    
+    # Collect all data for JSON output
+    all_data = []
 
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as outfile:
         writer = csv.DictWriter(outfile, fieldnames=out_fields)
         writer.writeheader()
 
-        for pr_idx, (pr_id, files) in enumerate(list(target_prs.items())[:2]):
+        for pr_idx, (pr_id, files) in enumerate(list(target_prs.items())):
             log_activity(f"Processing PR {pr_id} with {len(files)} files...")
 
             file_chunks = chunk_pr_files(files)
@@ -266,11 +271,18 @@ def process_all_prs():
                 final_title = all_titles[0]
                 combined_desc = "\n\n".join(all_descriptions)
 
-
             for row in files:
                 row["generated_title"] = final_title
                 row["generated_description"] = combined_desc
                 writer.writerow(row)
+                all_data.append(dict(row))  # Add to JSON data collection
+
+    # Save as JSON
+    with open(OUTPUT_JSON_FILE, "w", encoding="utf-8") as json_file:
+        json.dump(all_data, json_file, indent=2, ensure_ascii=False)
+    
+    log_activity(f"Saved CSV output to {OUTPUT_FILE}")
+    log_activity(f"Saved JSON output to {OUTPUT_JSON_FILE}")
 
 
 # Run it
