@@ -10,12 +10,12 @@ with open("./env/tokens.txt", "r") as f:
     openai.api_key = f.read().strip()
 
 ### === CONFIG === ###
-MODE = "zero"  # choose: "zero", "one", "few"
+MODE = "few"  # choose: "zero", "one", "few"
 EXAMPLE_FILE = "../pr_files/datasets/few_shot_example_pr_files_output.csv"
 TARGET_FILE = "../pr_files/datasets/pr_files_output.csv"
-OUTPUT_FILE = "./datasets/generated_title_and_pr.csv"
-OUTPUT_JSON_FILE = "./datasets/generated_title_and_pr.json"
-LOG_PATH = "./datasets/output.log"
+OUTPUT_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.csv"
+OUTPUT_JSON_FILE =f"./datasets/generated_title_and_pr_{MODE}_shot.json"
+LOG_PATH = f"./datasets/output_{MODE}_shot.log"
 MAX_EXAMPLES = {"zero": 0, "one": 1, "few": 3}[MODE]
 MAX_PROMPT_TOKENS = 8000  # Leave room below 10k TPM
 USE_MOCK = False
@@ -94,6 +94,33 @@ def format_assistant_reply(title, description):
 **Description:** {description}"""
 
 
+# === Trim message content to fit token limits ===
+def trim_message_content(content, max_tokens=2000):
+    """Trim message content to stay within token limits for examples."""
+    if estimate_tokens(content) <= max_tokens:
+        return content
+    
+    lines = content.splitlines()
+    trimmed_lines = []
+    current_tokens = 0
+    
+    # Keep the first line (usually the instruction)
+    if lines:
+        trimmed_lines.append(lines[0])
+        current_tokens += estimate_tokens(lines[0])
+    
+    # Add lines until we hit the limit
+    for line in lines[1:]:
+        line_tokens = estimate_tokens(line)
+        if current_tokens + line_tokens > max_tokens:
+            trimmed_lines.append("... [content trimmed for brevity] ...")
+            break
+        trimmed_lines.append(line)
+        current_tokens += line_tokens
+    
+    return "\n".join(trimmed_lines)
+
+
 # === Build full message list ===
 def build_messages(example_blocks, target_prompt):
     messages = [
@@ -104,10 +131,12 @@ def build_messages(example_blocks, target_prompt):
     ]
     for pr_files in example_blocks[:MAX_EXAMPLES]:
         user_msg = format_pr_prompt(pr_files)
+        # Trim the user message for few-shot examples to prevent token overflow
+        trimmed_user_msg = trim_message_content(user_msg, max_tokens=2000)
         assistant_msg = format_assistant_reply(
             pr_files[0]["title"], pr_files[0]["description"]
         )
-        messages.append({"role": "user", "content": user_msg})
+        messages.append({"role": "user", "content": trimmed_user_msg})
         messages.append({"role": "assistant", "content": assistant_msg})
 
     messages.append({"role": "user", "content": target_prompt})
