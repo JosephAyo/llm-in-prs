@@ -226,29 +226,20 @@ def group_by_pr(csv_file):
             prs[row["id"]].append(row)
     return prs, reader.fieldnames
 
-
 # === Extract title/description from GPT response ===
 def extract_title_description(response):
     title = ""
     description = ""
     lines = response.splitlines()
-    title_found = False
-    desc_found = False
     log_activity(f"lines:>>{lines}")
     for i, line in enumerate(lines):
-        if not title_found and "**Title:**" in line:
-            # Extract title after marker, even if on same line
-            title = line.split("**Title:**", 1)[-1].strip()
-            title_found = True
-        elif not desc_found and "**Description:**" in line:
-            # Extract description after marker, even if on same line
-            desc_part = line.split("**Description:**", 1)[-1].strip()
-            # If there is more description on the same line, include it
+        if "**Title:**" in line or "Title:" in line:
+            title = line.split("Title:", 1)[-1].replace("**", "").strip()
+        if "**Description:**" in line or "Description:" in line:
+            desc_part = line.split("Description:", 1)[-1].replace("**", "").strip()
             rest = [desc_part] if desc_part else []
-            # Include all following lines as part of the description
             rest += lines[i + 1 :]
             description = "\n".join(rest).strip()
-            desc_found = True
             break
     return title, description
 
