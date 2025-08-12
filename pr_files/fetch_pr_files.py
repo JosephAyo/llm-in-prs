@@ -10,7 +10,7 @@ import itertools
 import random
 
 # === Config ===
-CSV_FILE = "./datasets/random_significant_prs.csv"
+CSV_FILE = "./datasets/jabref-prs.csv"
 PICKLE_FILE = "./datasets/progress.pkl"
 TOKENS_FILE = "./env/tokens.txt"
 REQUEST_DELAY = 1.0
