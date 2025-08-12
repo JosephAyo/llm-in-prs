@@ -58,6 +58,27 @@ else:
     progress = {}
 
 
+# === Get file size via contents_url ===
+def get_file_size(contents_url, token_cycle):
+    """Return file size in bytes from GitHub contents API."""
+    token = next(token_cycle)
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        resp = requests.get(contents_url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("size")
+        elif resp.status_code == 403 and "rate limit" in resp.text.lower():
+            log_activity("Rate limit hit during contents_url request, switching token...")
+            return get_file_size(contents_url, token_cycle)  # retry with next token
+        else:
+            log_activity(f"Failed to get size ({resp.status_code}) for {contents_url}")
+            return None
+    except requests.RequestException as e:
+        log_activity(f"Request failed for {contents_url}: {e}")
+        return None
+
+
 # === Fetch PR Files with Pagination ===
 def fetch_pr_files(repo, pr_number, token_cycle):
     all_files = []
@@ -111,6 +132,16 @@ for i, (_, row) in enumerate(df.iterrows()):
     pr_files = fetch_pr_files(search_repository, pull_number, token_cycle)
 
     if pr_files:
+        pr_total_size = 0
+        for file_data in pr_files:
+            contents_url = file_data.get("contents_url")
+            if contents_url:
+                size = get_file_size(contents_url, token_cycle) if contents_url else None
+                file_data["file_size_bytes"] = size
+                if size is not None:
+                    pr_total_size += size
+                time.sleep(REQUEST_DELAY)  # avoid hammering API
+
         progress[key] = {
             "id": id,
             "title": title,
@@ -118,11 +149,15 @@ for i, (_, row) in enumerate(df.iterrows()):
             "state": state,
             "repository": search_repository,
             "pull_number": pull_number,
-            "files": pr_files
+            "files": pr_files,
+            "pr_total_size_bytes": pr_total_size,
         }
+
         with open(PICKLE_FILE, "wb") as f:
             pickle.dump(progress, f)
-        log_activity(f"✓ Saved progress for {key} ({len(pr_files)} files)")
+        log_activity(
+            f"✓ Saved progress for {key} ({len(pr_files)} files, {pr_total_size} bytes total)"
+        )
     else:
         log_activity(f"⚠️ No files fetched for {key}")
 
@@ -145,7 +180,8 @@ for key, pr_data in progress.items():
     pr_state = pr_data.get("state")
     repo = pr_data.get("repository")
     pr_number = pr_data.get("pull_number")
-    
+    pr_total_size_bytes = pr_data.get("pr_total_size_bytes", None)
+
     for f in files:
         csv_rows.append(
             {
@@ -164,6 +200,8 @@ for key, pr_data in progress.items():
                 "blob_url": f.get("blob_url"),
                 "raw_url": f.get("raw_url"),
                 "patch": f.get("patch", None),
+                "file_size_bytes": f.get("file_size_bytes"),
+                "pr_total_size_bytes": pr_total_size_bytes,
             }
         )
 
