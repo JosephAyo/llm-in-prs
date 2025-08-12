@@ -193,13 +193,13 @@ def merge_titles_and_descriptions_with_gpt(titles, descriptions):
     prompt = (
         "You are a helpful assistant. You are given multiple titles and descriptions generated from chunks of a pull request.\n"
         "Your task is to merge them into a single, clear, professional PR title and description.\n\n"
-        "### Titles:\n"
+        "**Title:**\n"
     )
 
     for i, t in enumerate(titles):
         prompt += f"- {t}\n"
 
-    prompt += "\n### Descriptions:\n"
+    prompt += "\n**Description:**\n"
 
     for i, d in enumerate(descriptions):
         prompt += f"Part {i+1}:\n{d}\n\n"
