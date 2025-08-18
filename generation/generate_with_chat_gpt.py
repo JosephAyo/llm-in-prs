@@ -18,7 +18,7 @@ OUTPUT_JSON_FILE =f"./datasets/generated_title_and_pr_{MODE}_shot.json"
 LOG_PATH = f"./datasets/output_{MODE}_shot.log"
 MAX_EXAMPLES = {"zero": 0, "one": 1, "few": 3}[MODE]
 MAX_PROMPT_TOKENS = 8000  # Leave room below 10k TPM
-USE_MOCK = False
+USE_MOCK = True
 INTERMEDIATE_FILE = "./datasets/intermediate_chunk_outputs.csv"
 
 # === Utility: Logging ===
@@ -231,7 +231,6 @@ def extract_title_description(response):
     title = ""
     description = ""
     lines = response.splitlines()
-    log_activity(f"lines:>>{lines}")
     for i, line in enumerate(lines):
         if "**Title:**" in line or "Title:" in line:
             title = line.split("Title:", 1)[-1].replace("**", "").strip()
@@ -266,7 +265,11 @@ def process_all_prs():
             for i, chunk in enumerate(file_chunks):
                 log_activity(f"  Chunk {i+1}/{len(file_chunks)} for PR {pr_id}")
                 prompt = format_pr_prompt(chunk)
+                # Log the combined prompt
+                log_activity(f"Combined prompt for PR {pr_id} chunk {i+1}:\n{prompt}")
                 messages = build_messages(examples, prompt)
+                # Log the messages as JSON
+                log_activity(f"Messages for PR {pr_id} chunk {i+1}:\n" + json.dumps(messages, indent=2, ensure_ascii=False))
                 response = call_chatgpt(messages)
                 time.sleep(1.5)
 
