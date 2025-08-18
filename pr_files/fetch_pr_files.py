@@ -69,7 +69,9 @@ def get_file_size(contents_url, token_cycle):
             data = resp.json()
             return data.get("size")
         elif resp.status_code == 403 and "rate limit" in resp.text.lower():
-            log_activity("Rate limit hit during contents_url request, switching token...")
+            log_activity(
+                "Rate limit hit during contents_url request, switching token..."
+            )
             return get_file_size(contents_url, token_cycle)  # retry with next token
         else:
             log_activity(f"Failed to get size ({resp.status_code}) for {contents_url}")
@@ -136,7 +138,9 @@ for i, (_, row) in enumerate(df.iterrows()):
         for file_data in pr_files:
             contents_url = file_data.get("contents_url")
             if contents_url:
-                size = get_file_size(contents_url, token_cycle) if contents_url else None
+                size = (
+                    get_file_size(contents_url, token_cycle) if contents_url else None
+                )
                 file_data["file_size_bytes"] = size
                 if size is not None:
                     pr_total_size += size
