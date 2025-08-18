@@ -126,7 +126,7 @@ def build_messages(example_blocks, target_prompt):
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful assistant that writes concise and informative GitHub pull request titles and descriptions based on multiple file diffs and metadata.",
+            "content": "You are a helpful assistant that writes concise and informative GitHub pull request titles and descriptions based on multiple file diffs and metadata. Respond in the following format:\n\n**Title:** <title>\n\n**Description:** <description>",
         }
     ]
     for pr_files in example_blocks[:MAX_EXAMPLES]:
