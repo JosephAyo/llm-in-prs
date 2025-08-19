@@ -104,6 +104,7 @@ def format_pr_prompt(pr_files):
         Filename: `{f['filename']}`
         Status: {f['status']}
         Additions: {f['additions']}, Deletions: {f['deletions']}, Changes: {f['changes']}
+        File Content: ```{f['file_content']}```
         Patch:
         ```diff
         {trimmed_patch}
@@ -150,7 +151,7 @@ def build_messages(example_blocks, target_prompt):
         {
             "role": "system",
             "content": (
-                "You are a helpful assistant that writes concise and informative GitHub pull request descriptions based on title, multiple code files and file diffs and metadata. "
+                "You are a helpful assistant that writes concise and informative GitHub pull request descriptions based on title, multiple code file contents and file diffs and metadata. "
                 "Respond ONLY with a valid JSON object in the following format (do not include any extra text):\n"
                 '{"description": "<description>"}'
             ),
