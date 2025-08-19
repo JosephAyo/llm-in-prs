@@ -10,13 +10,14 @@ import itertools
 import random
 
 # === Config ===
-CSV_FILE = "./datasets/jabref-prs.csv"
+CSV_FILE = "./datasets/sample_by_state.csv"
 PICKLE_FILE = "./datasets/progress.pkl"
 TOKENS_FILE = "./env/tokens.txt"
 REQUEST_DELAY = 1.0
 LOG_PATH = "./datasets/output.log"
-JSON_OUTPUT = "./datasets/pr_files_output.json"
-CSV_OUTPUT = "./datasets/pr_files_output.csv"
+JSON_OUTPUT = "./datasets/sample_by_state_pr_files_output.json"
+CSV_OUTPUT = "./datasets/sample_by_state_pr_files_output.csv"
+SAVE_FILE_CONTENT = True  # Set to True to fetch and save file content
 
 
 def log_activity(activity: str, log_path=LOG_PATH):
@@ -58,27 +59,36 @@ else:
     progress = {}
 
 
-# === Get file size via contents_url ===
-def get_file_size(contents_url, token_cycle):
-    """Return file size in bytes from GitHub contents API."""
+# === Get file size and content via contents_url ===
+def get_file_size_and_content(contents_url, token_cycle, save_content=False):
+    """Return file size in bytes and optionally decoded content from GitHub contents API."""
     token = next(token_cycle)
     headers = {"Authorization": f"Bearer {token}"}
     try:
         resp = requests.get(contents_url, headers=headers, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            return data.get("size")
+            size = data.get("size")
+            content = None
+            if save_content and "content" in data and data.get("encoding") == "base64":
+                import base64
+                try:
+                    content = base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+                except Exception as e:
+                    log_activity(f"Failed to decode content for {contents_url}: {e}")
+                    content = None
+            return size, content
         elif resp.status_code == 403 and "rate limit" in resp.text.lower():
             log_activity(
                 "Rate limit hit during contents_url request, switching token..."
             )
-            return get_file_size(contents_url, token_cycle)  # retry with next token
+            return get_file_size_and_content(contents_url, token_cycle, save_content)  # retry with next token
         else:
             log_activity(f"Failed to get size ({resp.status_code}) for {contents_url}")
-            return None
+            return None, None
     except requests.RequestException as e:
         log_activity(f"Request failed for {contents_url}: {e}")
-        return None
+        return None, None
 
 
 # === Fetch PR Files with Pagination ===
@@ -138,10 +148,10 @@ for i, (_, row) in enumerate(df.iterrows()):
         for file_data in pr_files:
             contents_url = file_data.get("contents_url")
             if contents_url:
-                size = (
-                    get_file_size(contents_url, token_cycle) if contents_url else None
-                )
+                size, content = get_file_size_and_content(contents_url, token_cycle, SAVE_FILE_CONTENT)
                 file_data["file_size_bytes"] = size
+                if SAVE_FILE_CONTENT:
+                    file_data["file_content"] = content
                 if size is not None:
                     pr_total_size += size
                 time.sleep(REQUEST_DELAY)  # avoid hammering API
@@ -205,6 +215,7 @@ for key, pr_data in progress.items():
                 "raw_url": f.get("raw_url"),
                 "patch": f.get("patch", None),
                 "file_size_bytes": f.get("file_size_bytes"),
+                "file_content": f.get("file_content") if SAVE_FILE_CONTENT else None,
                 "pr_total_size_bytes": pr_total_size_bytes,
             }
         )
