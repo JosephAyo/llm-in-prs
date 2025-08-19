@@ -4,6 +4,11 @@ import json
 import openai
 import time
 from collections import defaultdict
+import tiktoken
+
+MODEL_NAME = "gpt-4.1-2025-04-14"
+# Initialize encoding once (choose the same model as used in OpenAI calls)
+ENCODER = tiktoken.encoding_for_model(MODEL_NAME)  # or "gpt-4.1" etc.
 
 # 🔐 Load OpenAI API key
 with open("./env/tokens.txt", "r") as f:
@@ -14,12 +19,13 @@ MODE = "few"  # choose: "zero", "one", "few"
 EXAMPLE_FILE = "../pr_files/datasets/few_shot_example_pr_files_output.csv"
 TARGET_FILE = "../pr_files/datasets/pr_files_output.csv"
 OUTPUT_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.csv"
-OUTPUT_JSON_FILE =f"./datasets/generated_title_and_pr_{MODE}_shot.json"
+OUTPUT_JSON_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.json"
 LOG_PATH = f"./datasets/output_{MODE}_shot.log"
 MAX_EXAMPLES = {"zero": 0, "one": 1, "few": 3}[MODE]
 MAX_PROMPT_TOKENS = 8000  # Leave room below 10k TPM
 USE_MOCK = True
 INTERMEDIATE_FILE = "./datasets/intermediate_chunk_outputs.csv"
+
 
 # === Utility: Logging ===
 def log_activity(activity: str, log_path=LOG_PATH):
@@ -29,8 +35,27 @@ def log_activity(activity: str, log_path=LOG_PATH):
 
 
 # === Utility: Estimate token count ===
-def estimate_tokens(text):
-    return len(text) // 4  # Approximate: 1 token ≈ 4 characters
+def estimate_tokens(text, use_real=True):
+    """
+    Estimate token count.
+    If use_real=True, use tiktoken. Otherwise, fall back to /4 heuristic.
+    """
+    if not text:
+        return 0
+    if use_real:
+        return len(ENCODER.encode(text))
+    return len(text) // 4
+
+
+def compare_token_estimations(text):
+    real_tokens = estimate_tokens(text, use_real=True)
+    est_tokens = estimate_tokens(text, use_real=False)
+    return {
+        "real": real_tokens,
+        "estimated": est_tokens,
+        "difference": real_tokens - est_tokens,
+        "ratio": round(real_tokens / max(est_tokens, 1), 2),
+    }
 
 
 # === Chunk PR files if total tokens too high ===
@@ -99,16 +124,16 @@ def trim_message_content(content, max_tokens=2000):
     """Trim message content to stay within token limits for examples."""
     if estimate_tokens(content) <= max_tokens:
         return content
-    
+
     lines = content.splitlines()
     trimmed_lines = []
     current_tokens = 0
-    
+
     # Keep the first line (usually the instruction)
     if lines:
         trimmed_lines.append(lines[0])
         current_tokens += estimate_tokens(lines[0])
-    
+
     # Add lines until we hit the limit
     for line in lines[1:]:
         line_tokens = estimate_tokens(line)
@@ -117,7 +142,7 @@ def trim_message_content(content, max_tokens=2000):
             break
         trimmed_lines.append(line)
         current_tokens += line_tokens
-    
+
     return "\n".join(trimmed_lines)
 
 
@@ -162,10 +187,10 @@ def mock_chatgpt(messages):
 def call_chatgpt(messages):
     if USE_MOCK:
         return mock_chatgpt(messages)
-    
+
     try:
         response = openai.chat.completions.create(
-            model="gpt-4.1-2025-04-14",
+            model=MODEL_NAME,
             messages=messages,
             temperature=0.5,
         )
@@ -174,6 +199,7 @@ def call_chatgpt(messages):
         log_activity(f"Error: {e}")
         return None
 
+
 def save_intermediate_chunks(pr_id, chunk_outputs, output_file=INTERMEDIATE_FILE):
     fieldnames = ["pr_id", "chunk_index", "chunk_title", "chunk_description"]
     with open(output_file, "a", newline="", encoding="utf-8") as f:
@@ -181,12 +207,14 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=INTERMEDIATE_FILE
         if f.tell() == 0:
             writer.writeheader()
         for i, (title, desc) in enumerate(chunk_outputs):
-            writer.writerow({
-                "pr_id": pr_id,
-                "chunk_index": i,
-                "chunk_title": title,
-                "chunk_description": desc,
-            })
+            writer.writerow(
+                {
+                    "pr_id": pr_id,
+                    "chunk_index": i,
+                    "chunk_title": title,
+                    "chunk_description": desc,
+                }
+            )
 
 
 def merge_titles_and_descriptions_with_gpt(titles, descriptions):
@@ -226,6 +254,7 @@ def group_by_pr(csv_file):
             prs[row["id"]].append(row)
     return prs, reader.fieldnames
 
+
 # === Extract title/description from GPT response ===
 def extract_title_description(response):
     title = ""
@@ -248,7 +277,7 @@ def process_all_prs():
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
     out_fields = list(fieldnames or []) + ["generated_title", "generated_description"]
-    
+
     # Collect all data for JSON output
     all_data = []
 
@@ -258,6 +287,14 @@ def process_all_prs():
 
         for pr_idx, (pr_id, files) in enumerate(list(target_prs.items())):
             log_activity(f"Processing PR {pr_id} with {len(files)} files...")
+
+            # Access pr_total_size_bytes from target_prs if present
+            pr_total_size_bytes = (
+                target_prs[pr_id][0].get("pr_total_size_bytes")
+                if target_prs[pr_id] and "pr_total_size_bytes" in target_prs[pr_id][0]
+                else None
+            )
+            log_activity(f"PR {pr_id} total size (bytes): {pr_total_size_bytes}")
 
             file_chunks = chunk_pr_files(files)
             chunk_outputs = []
@@ -269,7 +306,10 @@ def process_all_prs():
                 log_activity(f"Combined prompt for PR {pr_id} chunk {i+1}:\n{prompt}")
                 messages = build_messages(examples, prompt)
                 # Log the messages as JSON
-                log_activity(f"Messages for PR {pr_id} chunk {i+1}:\n" + json.dumps(messages, indent=2, ensure_ascii=False))
+                log_activity(
+                    f"Messages for PR {pr_id} chunk {i+1}:\n"
+                    + json.dumps(messages, indent=2, ensure_ascii=False)
+                )
                 response = call_chatgpt(messages)
                 time.sleep(1.5)
 
@@ -286,7 +326,9 @@ def process_all_prs():
             all_titles = [title for title, _ in chunk_outputs]
             all_descriptions = [desc for _, desc in chunk_outputs]
 
-            merged_response = merge_titles_and_descriptions_with_gpt(all_titles, all_descriptions)
+            merged_response = merge_titles_and_descriptions_with_gpt(
+                all_titles, all_descriptions
+            )
 
             if merged_response:
                 final_title, combined_desc = extract_title_description(merged_response)
@@ -303,7 +345,7 @@ def process_all_prs():
     # Save as JSON
     with open(OUTPUT_JSON_FILE, "w", encoding="utf-8") as json_file:
         json.dump(all_data, json_file, indent=2, ensure_ascii=False)
-    
+
     log_activity(f"Saved CSV output to {OUTPUT_FILE}")
     log_activity(f"Saved JSON output to {OUTPUT_JSON_FILE}")
 
