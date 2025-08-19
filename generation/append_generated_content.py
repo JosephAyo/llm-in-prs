@@ -3,11 +3,11 @@ import os
 import datetime
 
 # File paths
-BASE_CSV = "../pr_files/datasets/random_significant_prs.csv"
-ZERO_SHOT_CSV = "./datasets/generated_title_and_pr_zero_shot.csv"
-ONE_SHOT_CSV = "./datasets/generated_title_and_pr_one_shot.csv"
-FEW_SHOT_CSV = "./datasets/generated_title_and_pr_few_shot.csv"
-OUTPUT_CSV = "./datasets/random_significant_prs_with_generated.csv"
+BASE_CSV = "../pr_files/datasets/sample_by_state.csv"
+ZERO_SHOT_CSV = "./datasets/zero_shot_generated.csv"
+ONE_SHOT_CSV = "./datasets/one_shot_generated.csv"
+FEW_SHOT_CSV = "./datasets/few_shot_generated.csv"
+OUTPUT_CSV = "./datasets/sample_by_state_with_generated.csv"
 LOG_PATH = "./datasets/merge_output.log"
 
 # === Utility: Logging ===
@@ -23,7 +23,7 @@ def load_generated_data(csv_file, suffix):
     # Check if file exists
     if not os.path.exists(csv_file):
         log_activity(f"  Warning: {csv_file} not found, skipping...")
-        return pd.DataFrame(columns=['id', f'generated_title_{suffix}', f'generated_description_{suffix}'])
+        return pd.DataFrame(columns=['id', f'generated_description_{suffix}'])
     
     df = pd.read_csv(csv_file)
     log_activity(f"  Loaded {len(df)} total rows")
@@ -33,9 +33,8 @@ def load_generated_data(csv_file, suffix):
     log_activity(f"  Found {len(unique_df)} unique PR IDs (removed {len(df) - len(unique_df)} duplicate rows)")
     
     # Select only the columns we need and rename them with suffix
-    result_df = unique_df[['id', 'generated_title', 'generated_description']].copy()
+    result_df = unique_df[['id', 'generated_description']].copy()
     result_df.rename(columns={
-        'generated_title': f'generated_title_{suffix}',
         'generated_description': f'generated_description_{suffix}'
     }, inplace=True)
     
@@ -75,9 +74,9 @@ def merge_all_data():
         log_activity(f"  After few shot merge: {len(merged_df)} rows")
     
     # Check merge success
-    zero_count = merged_df['generated_title_zero_shot'].notna().sum() if 'generated_title_zero_shot' in merged_df.columns else 0
-    one_count = merged_df['generated_title_one_shot'].notna().sum() if 'generated_title_one_shot' in merged_df.columns else 0
-    few_count = merged_df['generated_title_few_shot'].notna().sum() if 'generated_title_few_shot' in merged_df.columns else 0
+    zero_count = merged_df['generated_description_zero_shot'].notna().sum() if 'generated_description_zero_shot' in merged_df.columns else 0
+    one_count = merged_df['generated_description_one_shot'].notna().sum() if 'generated_description_one_shot' in merged_df.columns else 0
+    few_count = merged_df['generated_description_few_shot'].notna().sum() if 'generated_description_few_shot' in merged_df.columns else 0
     
     log_activity(f"Merge results:")
     log_activity(f"  Zero shot matches: {zero_count}")
@@ -89,9 +88,9 @@ def merge_all_data():
     merged_df.to_csv(OUTPUT_CSV, index=False)
     
     log_activity(f"✅ Successfully saved merged data with {len(merged_df)} rows")
-    log_activity(f"   Added columns: generated_title_zero_shot, generated_description_zero_shot")
-    log_activity(f"                  generated_title_one_shot, generated_description_one_shot")
-    log_activity(f"                  generated_title_few_shot, generated_description_few_shot")
+    log_activity(f"   Added columns: generated_description_zero_shot")
+    log_activity(f"                  generated_description_one_shot")
+    log_activity(f"                  generated_description_few_shot")
     
     return merged_df
 
@@ -100,7 +99,7 @@ if __name__ == "__main__":
     
     # Display a sample of the merged data to console
     print("\nSample of merged data:")
-    sample_cols = ['id', 'title', 'generated_title_zero_shot', 'generated_title_one_shot', 'generated_title_few_shot']
+    sample_cols = ['id', 'title', 'generated_description_zero_shot', 'generated_description_one_shot', 'generated_description_few_shot']
     available_cols = [col for col in sample_cols if col in merged_data.columns]
     print(merged_data[available_cols].head(3).to_string(index=False))
     

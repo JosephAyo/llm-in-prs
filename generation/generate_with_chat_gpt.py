@@ -6,6 +6,7 @@ import time
 from collections import defaultdict
 import tiktoken
 import math
+import sys
 
 MODEL_NAME = "gpt-4.1-2025-04-14"
 # Initialize encoding once (choose the same model as used in OpenAI calls)
@@ -16,15 +17,15 @@ with open("./env/tokens.txt", "r") as f:
     openai.api_key = f.read().strip()
 
 ### === CONFIG === ###
-MODE = "few"  # choose: "zero", "one", "few"
+MODE = "zero"  # choose: "zero", "one", "few"
 EXAMPLE_FILE = "../pr_files/datasets/sample_additional_pr_files_output.csv"
 TARGET_FILE = "../pr_files/datasets/sample_by_state_pr_files_output.csv"
-OUTPUT_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.csv"
-OUTPUT_JSON_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.json"
-LOG_PATH = f"./datasets/output_{MODE}_shot.log"
+OUTPUT_FILE = f"./datasets/{MODE}_shot_generated.csv"
+OUTPUT_JSON_FILE = f"./datasets/{MODE}_shot_generated.json"
+LOG_PATH = f"./datasets/{MODE}_shot_output.log"
 MAX_EXAMPLES = {"zero": 0, "one": 1, "few": 3}[MODE]
 MAX_PROMPT_TOKENS = 8000  # Leave room below 10k TPM
-USE_MOCK = True
+USE_MOCK = False
 INTERMEDIATE_FILE = "./datasets/intermediate_chunk_outputs.csv"
 
 
@@ -257,6 +258,8 @@ def merge_descriptions_with_gpt(descriptions):
 def group_by_pr(csv_file):
     prs = defaultdict(list)
     try:
+        # Increase CSV field size limit to handle large fields
+        csv.field_size_limit(sys.maxsize)
         with open(csv_file, newline="", encoding="utf-8") as infile:
             reader = csv.DictReader(infile)
             if not reader.fieldnames:
@@ -307,6 +310,7 @@ def process_all_prs():
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
     out_fields = list(fieldnames or []) + ["generated_description"]
 
+    log_activity(f"target_prs len {len(target_prs)}")
     # Collect all data for JSON output
     all_data = []
 
@@ -331,8 +335,6 @@ def process_all_prs():
             for i, chunk in enumerate(file_chunks):
                 log_activity(f"  Chunk {i+1}/{len(file_chunks)} for PR {pr_id}")
                 prompt = format_pr_prompt(chunk)
-                # Log the combined prompt
-                log_activity(f"Combined prompt for PR {pr_id} chunk {i+1}:\n{prompt}")
                 messages = build_messages(examples, prompt)
                 # Log the messages as JSON
                 log_activity(
