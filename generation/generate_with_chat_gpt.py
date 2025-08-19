@@ -5,6 +5,7 @@ import openai
 import time
 from collections import defaultdict
 import tiktoken
+import math
 
 MODEL_NAME = "gpt-4.1-2025-04-14"
 # Initialize encoding once (choose the same model as used in OpenAI calls)
@@ -47,15 +48,21 @@ def estimate_tokens(text, use_real=True):
     return len(text) // 4
 
 
-def compare_token_estimations(text):
-    real_tokens = estimate_tokens(text, use_real=True)
-    est_tokens = estimate_tokens(text, use_real=False)
-    return {
-        "real": real_tokens,
-        "estimated": est_tokens,
-        "difference": real_tokens - est_tokens,
-        "ratio": round(real_tokens / max(est_tokens, 1), 2),
-    }
+def estimate_tokens_bytes(file_size_bytes):
+    """
+    Estimate token count based on file size in bytes.
+    Handles string, int, float, and NaN values gracefully.
+    """
+    if file_size_bytes is None:
+        return 0
+    try:
+        # Convert to float first to handle both int and string representations
+        size = float(file_size_bytes)
+        if math.isnan(size):
+            return 0
+        return int(size // 3)
+    except (ValueError, TypeError):
+        return 0
 
 
 # === Chunk PR files if total tokens too high ===
@@ -65,17 +72,21 @@ def chunk_pr_files(pr_files, max_tokens=MAX_PROMPT_TOKENS):
     current_token_count = 0
 
     for f in pr_files:
-        patch_tokens = estimate_tokens(f["patch"])
-        meta_tokens = estimate_tokens(f["filename"] + f["status"]) + 10
-        file_tokens = patch_tokens + meta_tokens
+        title_tokens = estimate_tokens(f["title"], True)
+        patch_tokens = estimate_tokens(f["patch"], True)
+        file_content_tokens = estimate_tokens_bytes(
+            f["file_size_bytes"],
+        )
+        meta_tokens = estimate_tokens(f["filename"] + f["status"], True) + 10
+        total_tokens = title_tokens + patch_tokens + file_content_tokens + meta_tokens
 
-        if current_token_count + file_tokens > max_tokens and current_chunk:
+        if current_token_count + total_tokens > max_tokens and current_chunk:
             chunks.append(current_chunk)
             current_chunk = []
             current_token_count = 0
 
         current_chunk.append(f)
-        current_token_count += file_tokens
+        current_token_count += total_tokens
 
     if current_chunk:
         chunks.append(current_chunk)
