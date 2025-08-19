@@ -16,8 +16,8 @@ with open("./env/tokens.txt", "r") as f:
 
 ### === CONFIG === ###
 MODE = "few"  # choose: "zero", "one", "few"
-EXAMPLE_FILE = "../pr_files/datasets/few_shot_example_pr_files_output.csv"
-TARGET_FILE = "../pr_files/datasets/pr_files_output.csv"
+EXAMPLE_FILE = "../pr_files/datasets/sample_additional_pr_files_output.csv"
+TARGET_FILE = "../pr_files/datasets/sample_by_state_pr_files_output.csv"
 OUTPUT_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.csv"
 OUTPUT_JSON_FILE = f"./datasets/generated_title_and_pr_{MODE}_shot.json"
 LOG_PATH = f"./datasets/output_{MODE}_shot.log"
@@ -99,24 +99,22 @@ def format_pr_prompt(pr_files):
     for f in pr_files:
         patch_lines = f["patch"].splitlines()
         trimmed_patch = "\n".join(patch_lines)
-        part = f"""Filename: `{f['filename']}`
-Status: {f['status']}
-Additions: {f['additions']}, Deletions: {f['deletions']}, Changes: {f['changes']}
-Patch:
-```diff
-{trimmed_patch}
-```"""
+        part = f"""
+        Title: `{f['title']}`
+        Filename: `{f['filename']}`
+        Status: {f['status']}
+        Additions: {f['additions']}, Deletions: {f['deletions']}, Changes: {f['changes']}
+        Patch:
+        ```diff
+        {trimmed_patch}
+        ```"""
         parts.append(part)
-    return "Generate a title and description for this PR:\n\n" + "\n\n---\n\n".join(
-        parts
-    )
+    return "Generate a description for this PR:\n\n" + "\n\n---\n\n".join(parts)
 
 
 # === Format assistant example ===
 def format_assistant_reply(title, description):
-    return f"""**Title:** {title}
-
-**Description:** {description}"""
+    return json.dumps({"title": title, "description": description}, ensure_ascii=False)
 
 
 # === Trim message content to fit token limits ===
@@ -151,12 +149,15 @@ def build_messages(example_blocks, target_prompt):
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful assistant that writes concise and informative GitHub pull request titles and descriptions based on multiple file diffs and metadata. Respond in the following format:\n\n**Title:** <title>\n\n**Description:** <description>",
+            "content": (
+                "You are a helpful assistant that writes concise and informative GitHub pull request descriptions based on title, multiple code files and file diffs and metadata. "
+                "Respond ONLY with a valid JSON object in the following format (do not include any extra text):\n"
+                '{"description": "<description>"}'
+            ),
         }
     ]
     for pr_files in example_blocks[:MAX_EXAMPLES]:
         user_msg = format_pr_prompt(pr_files)
-        # Trim the user message for few-shot examples to prevent token overflow
         trimmed_user_msg = trim_message_content(user_msg, max_tokens=2000)
         assistant_msg = format_assistant_reply(
             pr_files[0]["title"], pr_files[0]["description"]
@@ -177,10 +178,12 @@ def mock_chatgpt(messages):
         if line.startswith("Filename:")
     ]
     joined_files = ", ".join(filenames[:3]) + ("..." if len(filenames) > 3 else "")
-
-    return f"""**Title:** Update {file_count} files: {joined_files}
-
-**Description:** This mock PR updates {file_count} file(s) including {joined_files}. It includes code changes such as additions, deletions, and modifications. Use this mock description to verify formatting and CSV outputs."""
+    return json.dumps(
+        {
+            "description": f"This mock PR updates {file_count} file(s) including {joined_files}. It includes code changes such as additions, deletions, and modifications. Use this mock description to verify formatting and CSV outputs.",
+        },
+        ensure_ascii=False,
+    )
 
 
 # === Call GPT API ===
@@ -217,66 +220,80 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=INTERMEDIATE_FILE
             )
 
 
-def merge_titles_and_descriptions_with_gpt(titles, descriptions):
-    prompt = (
-        "You are a helpful assistant. You are given multiple titles and descriptions generated from chunks of a pull request.\n"
-        "Your task is to merge them into a single, clear, professional PR title and description.\n\n"
-        "**Title:**\n"
-    )
-
-    for i, t in enumerate(titles):
-        prompt += f"- {t}\n"
-
-    prompt += "\n**Description:**\n"
-
+def merge_descriptions_with_gpt(descriptions):
+    if len(descriptions) == 1:
+        # If only one description, return it directly as JSON
+        return json.dumps({"description": descriptions[0]}, ensure_ascii=False)
+    prompt = "\n\nDescriptions from PR chunks to merge into a single, clear, PR description. Use the original PR title as the final title.\n\nDescriptions:\n"
     for i, d in enumerate(descriptions):
-        prompt += f"Part {i+1}:\n{d}\n\n"
-
-    prompt += "\nRespond in the following format:\n\n**Title:** <merged title>\n\n**Description:** <merged description>"
-
+        prompt += f"Part {i+1}: {d}\n\n"
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful assistant that merges multiple PR titles and descriptions into one cohesive summary.",
+            "content": (
+                "You are a helpful assistant. You are given multiple descriptions generated from chunks of a pull request. "
+                "Your task is to merge them into a single, clear, PR description. Respond ONLY with a valid JSON object in the following format (do not include any extra text):\n"
+                '{"description": "<merged description>"}'
+            ),
         },
         {"role": "user", "content": prompt.strip()},
     ]
-
     return call_chatgpt(messages)
 
 
 # === Group files by PR ID ===
 def group_by_pr(csv_file):
     prs = defaultdict(list)
-    with open(csv_file, newline="", encoding="utf-8") as infile:
-        reader = csv.DictReader(infile)
-        for row in reader:
-            prs[row["id"]].append(row)
+    try:
+        with open(csv_file, newline="", encoding="utf-8") as infile:
+            reader = csv.DictReader(infile)
+            if not reader.fieldnames:
+                log_activity(f"Error: CSV file {csv_file} has no header/fieldnames.")
+                return prs, []
+            row_count = 0
+            for row in reader:
+                if not row or not row.get("id"):
+                    continue
+                prs[row["id"]].append(row)
+                row_count += 1
+            if row_count == 0:
+                log_activity(
+                    f"Warning: CSV file {csv_file} is empty or has no valid rows."
+                )
+    except Exception as e:
+        log_activity(f"Error reading CSV file {csv_file}: {e}")
+        return prs, []
     return prs, reader.fieldnames
 
 
 # === Extract title/description from GPT response ===
-def extract_title_description(response):
-    title = ""
-    description = ""
-    lines = response.splitlines()
-    for i, line in enumerate(lines):
-        if "**Title:**" in line or "Title:" in line:
-            title = line.split("Title:", 1)[-1].replace("**", "").strip()
-        if "**Description:**" in line or "Description:" in line:
-            desc_part = line.split("Description:", 1)[-1].replace("**", "").strip()
-            rest = [desc_part] if desc_part else []
-            rest += lines[i + 1 :]
-            description = "\n".join(rest).strip()
-            break
-    return title, description
+def extract_title_description(response, original_title=None):
+    try:
+        data = json.loads(response)
+        # If only description is present, use original_title
+        title = data.get("title", original_title or "")
+        description = data.get("description", "")
+        return title, description
+    except Exception:
+        # fallback to old extraction if not valid JSON
+        title = original_title or ""
+        description = ""
+        lines = response.splitlines()
+        for i, line in enumerate(lines):
+            if "**Description:**" in line or "Description:" in line:
+                desc_part = line.split("Description:", 1)[-1].replace("**", "").strip()
+                rest = [desc_part] if desc_part else []
+                rest += lines[i + 1 :]
+                description = "\n".join(rest).strip()
+                break
+        return title, description
 
 
 # === MAIN PIPELINE ===
 def process_all_prs():
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
-    out_fields = list(fieldnames or []) + ["generated_title", "generated_description"]
+    out_fields = list(fieldnames or []) + ["generated_description"]
 
     # Collect all data for JSON output
     all_data = []
@@ -326,20 +343,21 @@ def process_all_prs():
             all_titles = [title for title, _ in chunk_outputs]
             all_descriptions = [desc for _, desc in chunk_outputs]
 
-            merged_response = merge_titles_and_descriptions_with_gpt(
-                all_titles, all_descriptions
-            )
+            merged_response = merge_descriptions_with_gpt(all_descriptions)
 
+            # Use the original title from the first chunk
+            original_title = all_titles[0] if all_titles else ""
             if merged_response:
-                final_title, combined_desc = extract_title_description(merged_response)
+                final_title, combined_desc = extract_title_description(
+                    merged_response, original_title=original_title
+                )
             else:
-                final_title = all_titles[0]
                 combined_desc = "\n\n".join(all_descriptions)
 
             for row in files:
-                row["generated_title"] = final_title
                 row["generated_description"] = combined_desc
-                writer.writerow(row)
+                filtered_row = {k: row.get(k, "") for k in out_fields}
+                writer.writerow(filtered_row)
                 all_data.append(dict(row))  # Add to JSON data collection
 
     # Save as JSON
