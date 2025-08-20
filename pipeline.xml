@@ -1,0 +1,94 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" version="28.1.0">
+  <diagram name="AI Spam Dataset Flow" id="iJdwgnd8P7UIV_UqGv66">
+    <mxGraphModel dx="1186" dy="795" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-8" value="PRs with generated description" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="239" y="560" width="176" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-9" value="🗂️&lt;br&gt;Initial Dataset&lt;br&gt;8875 Pull Requests&lt;br&gt;Date Range: 2014-03-12 to 2025-07-31&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;align=center;" vertex="1" parent="1">
+          <mxGeometry x="308" y="224" width="350" height="238" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-10" value="3 PRs for prompting" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="780" y="360" width="180" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-11" value="10 PRs per status&lt;div&gt;- merged&lt;/div&gt;&lt;div&gt;- open&lt;/div&gt;&lt;div&gt;- closed&lt;/div&gt;" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="780" y="266" width="180" height="82" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-12" value="🗃️&lt;br&gt;Data Source&lt;br&gt;GitHub JabRef&amp;nbsp;PRs" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="54" y="273" width="180" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-13" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="246" y="342.58" as="sourcePoint" />
+            <mxPoint x="302" y="342.58" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-14" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="672" y="350" as="sourcePoint" />
+            <mxPoint x="748" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-15" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="981" y="338" as="sourcePoint" />
+            <mxPoint x="1037" y="338" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-16" value="..." style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1058" y="323" width="42" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-17" value="..." style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="12" y="599" width="42" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-18" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="122" y="657.58" as="sourcePoint" />
+            <mxPoint x="178" y="657.58" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-19" value="Download file content, diffs &lt;br&gt;&amp;amp; other metadata" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;horizontal=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="273" width="168" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-20" value="Description generation with LLM" style="label;whiteSpace=wrap;html=1;image=img/clipart/Gear_128x128.png" vertex="1" parent="1">
+          <mxGeometry x="78" y="546" width="140" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-21" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="492" y="657.58" as="sourcePoint" />
+            <mxPoint x="548" y="657.58" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-22" value="Run detection tool" style="label;whiteSpace=wrap;html=1;image=img/clipart/Gear_128x128.png" vertex="1" parent="1">
+          <mxGeometry x="448" y="546" width="140" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-23" value="Detection tool output" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="624" y="560" width="176" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-24" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="812" y="633.17" as="sourcePoint" />
+            <mxPoint x="868" y="633.17" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-25" value="Comparison report: original vs generated description" style="shape=rectangle;whiteSpace=wrap;rounded=1;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="884" y="560" width="176" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-26" value="Sort by total file&lt;br&gt;&amp;nbsp;size (asc) &amp;amp;&amp;nbsp;&lt;br&gt;select PRs with&lt;br&gt;significant changes" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="657" y="267" width="112" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-27" value="Download steps" style="swimlane;childLayout=stackLayout;horizontal=1;fillColor=none;horizontalStack=1;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;strokeColor=none;stackBorder=10;stackSpacing=-12;resizable=1;align=center;points=[];whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="309" y="337" width="348" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-28" value="Basic PR &lt;br&gt;attributes (GraphQL)" style="shape=step;perimeter=stepPerimeter;fixedSize=1;points=[];whiteSpace=wrap;html=1;" vertex="1" parent="Y2ki8yQHUYLOD8zuoRrZ-27">
+          <mxGeometry x="10" y="33" width="168" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="Y2ki8yQHUYLOD8zuoRrZ-29" value="PR file size &lt;br&gt;metadata (REST API)" style="shape=step;perimeter=stepPerimeter;fixedSize=1;points=[];whiteSpace=wrap;html=1;" vertex="1" parent="Y2ki8yQHUYLOD8zuoRrZ-27">
+          <mxGeometry x="166" y="33" width="172" height="57" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
