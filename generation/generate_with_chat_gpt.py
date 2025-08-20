@@ -8,7 +8,7 @@ import tiktoken
 import math
 import sys
 
-MODEL_NAME = "gpt-4.1-2025-04-14"
+MODEL_NAME = "gpt-4.1-mini-2025-04-14"
 # Initialize encoding once (choose the same model as used in OpenAI calls)
 ENCODER = tiktoken.encoding_for_model(MODEL_NAME)  # or "gpt-4.1" etc.
 
@@ -17,7 +17,7 @@ with open("./env/tokens.txt", "r") as f:
     openai.api_key = f.read().strip()
 
 ### === CONFIG === ###
-MODE = "zero"  # choose: "zero", "one", "few"
+MODE = "few"  # choose: "zero", "one", "few"
 EXAMPLE_FILE = "../pr_files/datasets/sample_additional_pr_files_output.csv"
 TARGET_FILE = "../pr_files/datasets/sample_by_state_pr_files_output.csv"
 OUTPUT_FILE = f"./datasets/{MODE}_shot_generated.csv"
@@ -200,20 +200,30 @@ def mock_chatgpt(messages):
 
 
 # === Call GPT API ===
-def call_chatgpt(messages):
+def call_chatgpt(messages, max_retries=3):
     if USE_MOCK:
         return mock_chatgpt(messages)
 
-    try:
-        response = openai.chat.completions.create(
-            model=MODEL_NAME,
-            messages=messages,
-            temperature=0.5,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        log_activity(f"Error: {e}")
-        return None
+    retries = 0
+    while retries < max_retries:
+        try:
+            response = openai.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages,
+                temperature=0.5,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            error_msg = str(e)
+            log_activity(f"Error: {error_msg}")
+            if '429' in error_msg or 'rate limit' in error_msg.lower():
+                wait_time = 65  # 1 minute and a bit
+                log_activity(f"Rate limit hit. Waiting {wait_time} seconds before retrying...")
+                time.sleep(wait_time)
+                retries += 1
+            else:
+                break
+    return None
 
 
 def save_intermediate_chunks(pr_id, chunk_outputs, output_file=INTERMEDIATE_FILE):
