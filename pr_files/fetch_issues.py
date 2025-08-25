@@ -11,7 +11,7 @@ import random
 import re
 
 # === Config ===
-tag = "few_shot_examples"
+tag = "golden_dataset"
 CSV_FILE = f"./datasets/{tag}.csv"
 PICKLE_FILE = f"./datasets/{tag}_issues_progress.pkl"
 TOKENS_FILE = "./env/tokens.txt"
@@ -151,8 +151,8 @@ def fetch_issue_comments(comments_url, token_cycle):
 
 
 # === Format comments ===
-def format_comments(comments):
-    """Format comments into a single string"""
+def format_comments(comments, issue_number):
+    """Format comments into a single string with issue number"""
     if not comments:
         return ""
 
@@ -160,7 +160,7 @@ def format_comments(comments):
     for i, comment in enumerate(comments, 1):
         author = comment.get("user", {}).get("login", "Unknown")
         body = comment.get("body", "").strip()
-        formatted_comments.append(f"Comment #{i} by {author} : {body}")
+        formatted_comments.append(f"Comment #{i} by {author} in issue #{issue_number}: {body}")
 
     return "\n\n".join(formatted_comments)
 
@@ -189,42 +189,36 @@ for i, (_, row) in enumerate(df.iterrows()):
         f"[{i + 1}/{len(df)}] Processing issues {issue_numbers} from {repository}"
     )
 
+    # Check if this row has already been processed (using row index as key)
+    row_key = f"{repository}_row_{i}"
+    if row_key in progress:
+        log_activity(f"Skipping already processed row {i}")
+        continue
+
+    # Collect all issue data for this row
+    all_issues_data = []
+    all_comments = []
+    
     # Process each issue number
     for issue_number in issue_numbers:
-        key = f"{repository}#{issue_number}#{i}"  # Include row index to make key unique
-
-        if key in progress:
-            log_activity(f"Skipping already processed {key}")
-            continue
-
-        log_activity(f"Fetching issue {key} ...")
+        log_activity(f"Fetching issue #{issue_number} from {repository} ...")
         issue_data = fetch_issue(repository, issue_number, token_cycle)
 
         if issue_data:
             # Fetch comments
             comments_url = issue_data.get("comments_url")
             comments = []
-            formatted_comments = ""
 
             if comments_url:
-                log_activity(f"Fetching comments for {key} ...")
+                log_activity(f"Fetching comments for {repository}#{issue_number} ...")
                 comments = fetch_issue_comments(comments_url, token_cycle)
-                formatted_comments = format_comments(comments)
                 time.sleep(REQUEST_DELAY)
 
-            # Store the processed issue with original row data
-            progress[key] = {
-                # Original row data (all columns from input CSV)
-                "original_row_data": row.to_dict(),
-                "row_index": i,
-                # Issue-specific data
-                "repository": repository,
+            all_issues_data.append({
                 "issue_number": issue_number,
                 "issue_id": issue_data.get("id"),
                 "issue_title": issue_data.get("title"),
                 "issue_body": issue_data.get("body"),
-                "issue_comments": formatted_comments,
-                "issue_comments_count": len(comments),
                 "issue_state": issue_data.get("state"),
                 "issue_created_at": issue_data.get("created_at"),
                 "issue_updated_at": issue_data.get("updated_at"),
@@ -235,17 +229,78 @@ for i, (_, row) in enumerate(df.iterrows()):
                     else None
                 ),
                 "issue_url": issue_data.get("html_url"),
-            }
-
-            # Save progress after each issue
-            with open(PICKLE_FILE, "wb") as f:
-                pickle.dump(progress, f)
-
-            log_activity(f"✓ Saved progress for {key} ({len(comments)} comments)")
+                "comments": comments
+            })
         else:
-            log_activity(f"⚠️ Failed to fetch issue {key}")
+            log_activity(f"⚠️ Failed to fetch issue #{issue_number}")
 
         time.sleep(REQUEST_DELAY)
+
+    if all_issues_data:
+        # Combine all issue data into formatted strings
+        issue_titles = []
+        issue_bodies = []
+        issue_states = []
+        issue_authors = []
+        issue_urls = []
+        issue_ids = []
+        issue_numbers_list = []
+        issue_created_ats = []
+        issue_updated_ats = []
+        issue_closed_ats = []
+        
+        # Collect all comments with issue context
+        all_formatted_comments = []
+        total_comments_count = 0
+        
+        for issue_info in all_issues_data:
+            issue_num = issue_info["issue_number"]
+            issue_titles.append(f"issue #{issue_num}: {issue_info['issue_title'] or ''}")
+            issue_bodies.append(f"issue #{issue_num}: {issue_info['issue_body'] or ''}")
+            issue_states.append(f"issue #{issue_num}: {issue_info['issue_state'] or ''}")
+            issue_authors.append(f"issue #{issue_num}: {issue_info['issue_author'] or ''}")
+            issue_urls.append(f"issue #{issue_num}: {issue_info['issue_url'] or ''}")
+            issue_ids.append(f"issue #{issue_num}: {issue_info['issue_id'] or ''}")
+            issue_numbers_list.append(str(issue_num))
+            issue_created_ats.append(f"issue #{issue_num}: {issue_info['issue_created_at'] or ''}")
+            issue_updated_ats.append(f"issue #{issue_num}: {issue_info['issue_updated_at'] or ''}")
+            issue_closed_ats.append(f"issue #{issue_num}: {issue_info['issue_closed_at'] or ''}")
+            
+            # Format comments with issue context
+            if issue_info["comments"]:
+                formatted_comments = format_comments(issue_info["comments"], issue_num)
+                if formatted_comments:
+                    all_formatted_comments.append(formatted_comments)
+                total_comments_count += len(issue_info["comments"])
+
+        # Store the processed issues data for this row
+        progress[row_key] = {
+            # Original row data (all columns from input CSV)
+            "original_row_data": row.to_dict(),
+            "row_index": i,
+            # Combined issue-specific data
+            "repository": repository,
+            "issue_numbers": "|".join(issue_numbers_list),
+            "issue_ids": " \n\n ".join(issue_ids),
+            "issue_titles": " \n\n ".join(issue_titles),
+            "issue_bodies": " \n\n ".join(issue_bodies),
+            "issue_comments": "\n\n".join(all_formatted_comments),
+            "issue_comments_count": total_comments_count,
+            "issue_states": " \n\n ".join(issue_states),
+            "issue_created_ats": " \n\n ".join(issue_created_ats),
+            "issue_updated_ats": " \n\n ".join(issue_updated_ats),
+            "issue_closed_ats": " \n\n ".join(issue_closed_ats),
+            "issue_authors": " \n\n ".join(issue_authors),
+            "issue_urls": " \n\n ".join(issue_urls),
+        }
+
+        # Save progress after each row
+        with open(PICKLE_FILE, "wb") as f:
+            pickle.dump(progress, f)
+
+        log_activity(f"✓ Saved progress for row {i} ({len(all_issues_data)} issues, {total_comments_count} total comments)")
+    else:
+        log_activity(f"⚠️ No issues fetched for row {i}")
 
 log_activity(f"✅ Done. Fetched data for {len(progress)} issues.")
 
@@ -282,18 +337,18 @@ for key, issue_data in progress.items():
     csv_row.update(
         {
             "issue_repository": issue_data.get("repository"),
-            "issue_number": issue_data.get("issue_number"),
-            "issue_id": issue_data.get("issue_id"),
-            "issue_title": issue_data.get("issue_title"),
-            "issue_body": issue_data.get("issue_body"),
+            "issue_numbers": issue_data.get("issue_numbers"),
+            "issue_ids": issue_data.get("issue_ids"),
+            "issue_titles": issue_data.get("issue_titles"),
+            "issue_bodies": issue_data.get("issue_bodies"),
             "issue_comments": issue_data.get("issue_comments"),
             "issue_comments_count": issue_data.get("issue_comments_count"),
-            "issue_state": issue_data.get("issue_state"),
-            "issue_created_at": issue_data.get("issue_created_at"),
-            "issue_updated_at": issue_data.get("issue_updated_at"),
-            "issue_closed_at": issue_data.get("issue_closed_at"),
-            "issue_author": issue_data.get("issue_author"),
-            "issue_url": issue_data.get("issue_url"),
+            "issue_states": issue_data.get("issue_states"),
+            "issue_created_ats": issue_data.get("issue_created_ats"),
+            "issue_updated_ats": issue_data.get("issue_updated_ats"),
+            "issue_closed_ats": issue_data.get("issue_closed_ats"),
+            "issue_authors": issue_data.get("issue_authors"),
+            "issue_urls": issue_data.get("issue_urls"),
         }
     )
 
