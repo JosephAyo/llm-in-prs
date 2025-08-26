@@ -18,8 +18,8 @@ with open("./env/tokens.txt", "r") as f:
 
 ### === CONFIG === ###
 MODE = "few"  # choose: "zero", "one", "few"
-EXAMPLE_FILE = "../pr_files/datasets/sample_additional_pr_files_output.csv"
-TARGET_FILE = "../pr_files/datasets/sample_by_state_pr_files_output.csv"
+EXAMPLE_FILE = "../pr_files/datasets/few_shot_examples_with_issues_and_files.csv"
+TARGET_FILE = "../pr_files/datasets/golden_dataset_with_issues_and_files.csv"
 OUTPUT_FILE = f"./datasets/{MODE}_shot_generated.csv"
 OUTPUT_JSON_FILE = f"./datasets/{MODE}_shot_generated.json"
 LOG_PATH = f"./datasets/{MODE}_shot_output.log"
