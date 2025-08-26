@@ -420,7 +420,10 @@ def mock_chatgpt(messages):
 # === Call GPT API ===
 def call_chatgpt(messages, max_retries=3):
     if USE_MOCK:
-        return mock_chatgpt(messages)
+        # For mock, calculate estimated token usage
+        input_tokens = sum(len(ENCODER.encode(str(msg))) for msg in messages)
+        output_tokens = len(ENCODER.encode("Mock generated PR description with detailed technical content covering multiple aspects of the implementation."))
+        return mock_chatgpt(messages), input_tokens, output_tokens
 
     retries = 0
     while retries < max_retries:
@@ -430,7 +433,19 @@ def call_chatgpt(messages, max_retries=3):
                 messages=messages,
                 temperature=0.5,
             )
-            return response.choices[0].message.content
+            # Extract token usage from response
+            if response and response.usage:
+                input_tokens = response.usage.prompt_tokens
+                output_tokens = response.usage.completion_tokens
+                total_tokens = response.usage.total_tokens
+                
+                log_activity(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+                
+                return response.choices[0].message.content, input_tokens, output_tokens
+            else:
+                # Fallback if usage info is not available
+                log_activity("Warning: No usage information available from API response")
+                return response.choices[0].message.content if response else None, 0, 0
         except Exception as e:
             error_msg = str(e)
             log_activity(f"Error: {error_msg}")
@@ -443,7 +458,7 @@ def call_chatgpt(messages, max_retries=3):
                 retries += 1
             else:
                 break
-    return None
+    return None, 0, 0
 
 
 def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
@@ -451,7 +466,7 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
     if output_file is None:
         output_file = INTERMEDIATE_FILE
     
-    fieldnames = ["pr_id", "chunk_index", "chunk_title", "chunk_description"]
+    fieldnames = ["pr_id", "chunk_index", "chunk_title", "chunk_description", "input_tokens", "output_tokens"]
     
     # Check if file exists to determine if we need to write header
     file_exists = False
@@ -465,21 +480,30 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
-        for i, (title, desc) in enumerate(chunk_outputs):
+        for i, chunk_data in enumerate(chunk_outputs):
+            # Handle both old format (title, desc) and new format (title, desc, input_tokens, output_tokens)
+            if len(chunk_data) == 2:
+                title, desc = chunk_data
+                input_tokens, output_tokens = 0, 0
+            else:
+                title, desc, input_tokens, output_tokens = chunk_data
+            
             writer.writerow(
                 {
                     "pr_id": pr_id,
                     "chunk_index": i,
                     "chunk_title": title,
                     "chunk_description": desc,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
                 }
             )
 
 
 def merge_descriptions_with_gpt(descriptions):
     if len(descriptions) == 1:
-        # If only one description, return it directly as JSON
-        return json.dumps({"description": descriptions[0]}, ensure_ascii=False)
+        # If only one description, return it directly as JSON with zero tokens
+        return json.dumps({"description": descriptions[0]}, ensure_ascii=False), 0, 0
     prompt = "\n\nDescriptions from PR chunks to merge into a single, clear, PR description. Use the original PR title as the final title.\n\nDescriptions:\n"
     for i, d in enumerate(descriptions):
         prompt += f"Part {i+1}: {d}\n\n"
@@ -561,7 +585,7 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
 
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
-    out_fields = list(fieldnames or []) + ["generated_description", "prompt_variation"]
+    out_fields = list(fieldnames or []) + ["generated_description", "prompt_variation", "total_input_tokens", "total_output_tokens", "total_tokens"]
 
     log_activity(f"target_prs len {len(target_prs)}")
     # Collect all data for JSON output
@@ -596,7 +620,7 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
                     f"Messages for PR {pr_id} chunk {i+1}:\n"
                     + json.dumps(messages, indent=2, ensure_ascii=False)
                 )
-                response = call_chatgpt(messages)
+                response, input_tokens, output_tokens = call_chatgpt(messages)
                 time.sleep(1.5)
 
                 if response:
@@ -604,15 +628,24 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
                 else:
                     title, desc = "ERROR", "Failed to generate"
 
-                chunk_outputs.append((title, desc))
+                chunk_outputs.append((title, desc, input_tokens, output_tokens))
 
             save_intermediate_chunks(pr_id, chunk_outputs, intermediate_file)
 
-            # Combine chunk outputs
-            all_titles = [title for title, _ in chunk_outputs]
-            all_descriptions = [desc for _, desc in chunk_outputs]
+            # Combine chunk outputs and calculate token totals
+            all_titles = [title for title, _, _, _ in chunk_outputs]
+            all_descriptions = [desc for _, desc, _, _ in chunk_outputs]
+            total_chunk_input_tokens = sum(input_tokens for _, _, input_tokens, _ in chunk_outputs)
+            total_chunk_output_tokens = sum(output_tokens for _, _, _, output_tokens in chunk_outputs)
 
-            merged_response = merge_descriptions_with_gpt(all_descriptions)
+            merged_response, merge_input_tokens, merge_output_tokens = merge_descriptions_with_gpt(all_descriptions)
+
+            # Calculate total token usage for this PR
+            total_input_tokens = total_chunk_input_tokens + merge_input_tokens
+            total_output_tokens = total_chunk_output_tokens + merge_output_tokens
+            total_tokens = total_input_tokens + total_output_tokens
+
+            log_activity(f"PR {pr_id} total tokens - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
 
             # Use the original title from the first chunk
             original_title = all_titles[0] if all_titles else ""
@@ -626,6 +659,9 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
             for row in files:
                 row["generated_description"] = combined_desc
                 row["prompt_variation"] = prompt_variation_key
+                row["total_input_tokens"] = total_input_tokens
+                row["total_output_tokens"] = total_output_tokens
+                row["total_tokens"] = total_tokens
                 filtered_row = {k: row.get(k, "") for k in out_fields}
                 writer.writerow(filtered_row)
                 all_data.append(dict(row))  # Add to JSON data collection
