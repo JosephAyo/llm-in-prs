@@ -18,11 +18,12 @@ csv.field_size_limit(sys.maxsize)
 # Constants / Paths
 TOKENS_FILE = "./env/zero-gpt-tokens.txt"
 DATASET_NAME = "jabref_prs"
-INPUT_CSV_PATH = f"./datasets/{DATASET_NAME}/random_significant_prs_with_generated-fixed.csv"
+INPUT_CSV_PATH = f"../generation/datasets/sample_by_state_with_generated.csv"
 OUTPUT_CSV_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection.csv"
 PROGRESS_PKL_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection-progress.pkl"
 LOG_PATH = f"./datasets/{DATASET_NAME}/{DATASET_NAME}-detection-output.log"
 API_URL = "https://api.zerogpt.com/api/detect/detectText"
+IGNORE_IS_SIGNIFICANT = True
 
 
 def load_tokens(tokens_file=TOKENS_FILE):
@@ -40,15 +41,20 @@ def log_activity(activity: str, log_path=LOG_PATH):
 
 
 def is_significant(text, min_chars=250):
+    if IGNORE_IS_SIGNIFICANT:
+        return True
     return text and len(text.strip()) >= min_chars
 
 
 def save_progress(df, processed_entries, path=PROGRESS_PKL_PATH):
     with open(path, "wb") as f:
-        pickle.dump({
-            "df": df.to_dict(orient="records"),
-            "processed_entries": list(processed_entries)
-        }, f)
+        pickle.dump(
+            {
+                "df": df.to_dict(orient="records"),
+                "processed_entries": list(processed_entries),
+            },
+            f,
+        )
 
 
 def load_progress(path):
@@ -61,42 +67,46 @@ def load_progress(path):
             or "processed_entries" not in progress_data
         ):
             return pd.DataFrame(), set()
-        return pd.DataFrame(progress_data["df"]), set(progress_data["processed_entries"])
+        return pd.DataFrame(progress_data["df"]), set(
+            progress_data["processed_entries"]
+        )
     except FileNotFoundError:
         return pd.DataFrame(), set()
 
 
 def create_detection_entries(row):
-    """Create detection entries for original and generated titles/descriptions."""
+    """Create detection entries for original and generated descriptions."""
     row_id = str(row.get("id", ""))
-    original_title = row.get("title", "")
     original_description = row.get("body", "")
-    
+
     entries = []
-    
-    # Original title + description
-    if is_significant(original_title + '\n' + original_description):
-        entries.append({
-            "id": row_id,
-            "type": "original",
-            "input_text": original_title + '\n' + original_description,
-            "entry_key": f"{row_id}_original"
-        })
-    
+
+    # Original description
+    if is_significant(original_description):
+        entries.append(
+            {
+                "id": row_id,
+                "type": "original",
+                "input_text": original_description,
+                "entry_key": f"{row_id}_original",
+            }
+        )
+
     # Generated variants
     shot_types = ["zero_shot", "one_shot", "few_shot"]
     for shot_type in shot_types:
-        gen_title = row.get(f"generated_title_{shot_type}", "")
         gen_description = row.get(f"generated_description_{shot_type}", "")
-        
-        if is_significant(gen_title + '\n' + gen_description):
-            entries.append({
-                "id": row_id,
-                "type": f"generated_{shot_type}",
-                "input_text": gen_title + '\n' + gen_description,
-                "entry_key": f"{row_id}_generated_{shot_type}"
-            })
-    
+
+        if is_significant(gen_description):
+            entries.append(
+                {
+                    "id": row_id,
+                    "type": f"generated_{shot_type}",
+                    "input_text": gen_description,
+                    "entry_key": f"{row_id}_generated_{shot_type}",
+                }
+            )
+
     return entries
 
 
@@ -111,7 +121,7 @@ def run_detection_on_jabref_prs(
     batch_size=50,
 ):
     log_activity("Starting detection on JabRef PRs...")
-    
+
     tokens, token_iterator = load_tokens(tokens_file)
     df, processed_entries = load_progress(progress_pkl_path)
 
@@ -119,7 +129,7 @@ def run_detection_on_jabref_prs(
     log_activity(f"Loading input CSV: {input_csv_path}")
     with open(input_csv_path, mode="r", encoding="utf-8") as input_file:
         reader = list(csv.DictReader(input_file))
-    
+
     log_activity(f"Loaded {len(reader)} rows from input CSV")
 
     # Create all detection entries (original + generated variants)
@@ -127,17 +137,16 @@ def run_detection_on_jabref_prs(
     for row in reader:
         entries = create_detection_entries(row)
         all_entries.extend(entries)
-    
+
     log_activity(f"Created {len(all_entries)} detection entries from {len(reader)} PRs")
-    
+
     # Filter out already processed entries
     entries_to_process = [
-        entry for entry in all_entries 
-        if entry["entry_key"] not in processed_entries
+        entry for entry in all_entries if entry["entry_key"] not in processed_entries
     ]
-    
+
     log_activity(f"Found {len(entries_to_process)} unprocessed entries")
-    
+
     if not entries_to_process:
         log_activity("All entries already processed!")
         return
@@ -145,18 +154,20 @@ def run_detection_on_jabref_prs(
     attempt = 0
     while entries_to_process and attempt < max_retries:
         current_batch = entries_to_process[:batch_size]
-        log_activity(f"Processing batch {attempt + 1}, {len(current_batch)} entries out of {len(entries_to_process)} remaining...")
-        
+        log_activity(
+            f"Processing batch {attempt + 1}, {len(current_batch)} entries out of {len(entries_to_process)} remaining..."
+        )
+
         new_rows = []
         processed_in_batch = []
         failed_in_batch = []
-        
+
         for i, entry in enumerate(current_batch):
             entry_key = entry["entry_key"]
             pr_id = entry["id"]
             entry_type = entry["type"]
             input_text = entry["input_text"]
-            
+
             current_token = next(token_iterator)
             payload = json.dumps({"input_text": input_text})
             headers = {
@@ -165,13 +176,15 @@ def run_detection_on_jabref_prs(
             }
 
             try:
-                log_activity(f"Processing entry {i+1}/{len(current_batch)}: {entry_key}")
-                
+                log_activity(
+                    f"Processing entry {i+1}/{len(current_batch)}: {entry_key}"
+                )
+
                 response = requests.post(API_URL, headers=headers, data=payload)
                 response_data = response.json()
                 zerogpt_response = json.dumps(response_data)
                 code = response_data.get("code")
-                
+
                 if code != HTTPStatus.OK:
                     log_activity(f"❌ Entry {entry_key} failed with code {code}.")
                     failed_in_batch.append(entry)
@@ -185,12 +198,12 @@ def run_detection_on_jabref_prs(
                     "entry_key": entry_key,
                     "entry_type": entry_type,
                     "input_text": input_text,
-                    "zerogpt_response": zerogpt_response
+                    "zerogpt_response": zerogpt_response,
                 }
 
                 new_rows.append(output_row)
                 processed_in_batch.append(entry_key)
-                
+
                 # Small delay between requests
                 time.sleep(1)
 
@@ -210,12 +223,13 @@ def run_detection_on_jabref_prs(
             df.drop_duplicates(subset="entry_key", keep="first").to_csv(
                 output_csv_path, index=False, encoding="utf-8"
             )
-            
+
             log_activity(f"Saved progress: {len(new_rows)} new entries processed")
 
         # Remove processed entries from the list
         entries_to_process = [
-            entry for entry in entries_to_process 
+            entry
+            for entry in entries_to_process
             if entry["entry_key"] not in processed_entries
         ]
 
@@ -228,15 +242,17 @@ def run_detection_on_jabref_prs(
             attempt += 1
         elif entries_to_process:
             # Continue processing without waiting if no failures
-            log_activity(f"Continuing to next batch. {len(entries_to_process)} entries remaining...")
+            log_activity(
+                f"Continuing to next batch. {len(entries_to_process)} entries remaining..."
+            )
             # Small delay between batches
             time.sleep(5)
 
     log_activity(f"✅ Detection finished. Output saved to {output_csv_path}")
-    
+
     # Print summary
     if not df.empty:
-        summary = df['entry_type'].value_counts()
+        summary = df["entry_type"].value_counts()
         log_activity("Summary by entry type:")
         for entry_type, count in summary.items():
             log_activity(f"  {entry_type}: {count}")
