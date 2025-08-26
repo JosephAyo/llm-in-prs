@@ -10,13 +10,14 @@ import itertools
 import random
 
 # === Config ===
-CSV_FILE = "./datasets/sample_by_state.csv"
-PICKLE_FILE = "./datasets/progress.pkl"
+tag = "golden_dataset"
+CSV_FILE = f"./datasets/{tag}_with_issues.csv"
+PICKLE_FILE = f"./datasets/{tag}_files_progress.pkl"
 TOKENS_FILE = "./env/tokens.txt"
 REQUEST_DELAY = 1.0
-LOG_PATH = "./datasets/output.log"
-JSON_OUTPUT = "./datasets/sample_by_state_pr_files_output.json"
-CSV_OUTPUT = "./datasets/sample_by_state_pr_files_output.csv"
+LOG_PATH = f"./datasets/{tag}_files_output.log"
+JSON_OUTPUT = f"./datasets/{tag}_with_issues_and_files.json"
+CSV_OUTPUT = f"./datasets/{tag}_with_issues_and_files.csv"
 SAVE_FILE_CONTENT = True  # Set to True to fetch and save file content
 
 
@@ -135,6 +136,10 @@ for i, (_, row) in enumerate(df.iterrows()):
         row["body"],
         row["state"],
     )
+    # Extract issue-related columns
+    issue_titles = row.get("issue_titles", None)
+    issue_bodies = row.get("issue_bodies", None)
+    issue_comments = row.get("issue_comments", None)
     key = f"{search_repository}#{pull_number}"
     if key in progress:
         log_activity(f"[{i + 1}/{len(df)}] Skipping already processed {key}")
@@ -165,6 +170,9 @@ for i, (_, row) in enumerate(df.iterrows()):
             "pull_number": pull_number,
             "files": pr_files,
             "pr_total_size_bytes": pr_total_size,
+            "issue_titles": issue_titles,
+            "issue_bodies": issue_bodies,
+            "issue_comments": issue_comments,
         }
 
         with open(PICKLE_FILE, "wb") as f:
@@ -195,6 +203,9 @@ for key, pr_data in progress.items():
     repo = pr_data.get("repository")
     pr_number = pr_data.get("pull_number")
     pr_total_size_bytes = pr_data.get("pr_total_size_bytes", None)
+    issue_titles = pr_data.get("issue_titles", None)
+    issue_bodies = pr_data.get("issue_bodies", None)
+    issue_comments = pr_data.get("issue_comments", None)
 
     for f in files:
         csv_rows.append(
@@ -217,6 +228,9 @@ for key, pr_data in progress.items():
                 "file_size_bytes": f.get("file_size_bytes"),
                 "file_content": f.get("file_content") if SAVE_FILE_CONTENT else None,
                 "pr_total_size_bytes": pr_total_size_bytes,
+                "issue_titles": issue_titles,
+                "issue_bodies": issue_bodies,
+                "issue_comments": issue_comments,
             }
         )
 
