@@ -2,6 +2,7 @@ import csv
 import datetime
 import json
 import openai
+import os
 import time
 from collections import defaultdict
 import tiktoken
@@ -445,11 +446,24 @@ def call_chatgpt(messages, max_retries=3):
     return None
 
 
-def save_intermediate_chunks(pr_id, chunk_outputs, output_file=INTERMEDIATE_FILE):
+def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
+    # Use current INTERMEDIATE_FILE if no specific file is provided
+    if output_file is None:
+        output_file = INTERMEDIATE_FILE
+    
     fieldnames = ["pr_id", "chunk_index", "chunk_title", "chunk_description"]
+    
+    # Check if file exists to determine if we need to write header
+    file_exists = False
+    try:
+        with open(output_file, "r") as f:
+            file_exists = True
+    except FileNotFoundError:
+        file_exists = False
+    
     with open(output_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if f.tell() == 0:
+        if not file_exists:
             writer.writeheader()
         for i, (title, desc) in enumerate(chunk_outputs):
             writer.writerow(
@@ -539,6 +553,12 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
     log_activity(f"Starting processing with prompt variation: {prompt_variation_key}")
     log_activity(f"Variation settings: {PROMPT_VARIATIONS[prompt_variation_key]}")
 
+    # Clear intermediate file for this variation to ensure fresh start
+    intermediate_file = f"datasets/prompt_variation_{prompt_variation_key}_intermediate_chunks.csv"
+    if os.path.exists(intermediate_file):
+        os.remove(intermediate_file)
+        log_activity(f"Cleared existing intermediate file: {intermediate_file}")
+
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
     out_fields = list(fieldnames or []) + ["generated_description", "prompt_variation"]
@@ -586,7 +606,7 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
 
                 chunk_outputs.append((title, desc))
 
-            save_intermediate_chunks(pr_id, chunk_outputs)
+            save_intermediate_chunks(pr_id, chunk_outputs, intermediate_file)
 
             # Combine chunk outputs
             all_titles = [title for title, _ in chunk_outputs]
