@@ -574,29 +574,41 @@ def extract_title_description(response, original_title=None):
 # === MAIN PIPELINE ===
 def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
     """Process all PRs using the specified prompt variation."""
-    log_activity(f"Starting processing with prompt variation: {prompt_variation_key}")
-    log_activity(f"Variation settings: {PROMPT_VARIATIONS[prompt_variation_key]}")
+    
+    # Create variation-specific file paths
+    variation_output_file = f"./datasets/prompt_variation_{prompt_variation_key}_generated.csv"
+    variation_json_file = f"./datasets/prompt_variation_{prompt_variation_key}_generated.json"
+    variation_log_path = f"./datasets/prompt_variation_{prompt_variation_key}_output.log"
+    intermediate_file = f"datasets/prompt_variation_{prompt_variation_key}_intermediate_chunks.csv"
+    
+    # Create a local logging function that uses the variation-specific log file
+    def log_variation_activity(activity: str):
+        log = f"{datetime.datetime.now()}: {activity}\n"
+        with open(variation_log_path, "a") as log_file:
+            log_file.write(log)
+    
+    log_variation_activity(f"Starting processing with prompt variation: {prompt_variation_key}")
+    log_variation_activity(f"Variation settings: {PROMPT_VARIATIONS[prompt_variation_key]}")
 
     # Clear intermediate file for this variation to ensure fresh start
-    intermediate_file = f"datasets/prompt_variation_{prompt_variation_key}_intermediate_chunks.csv"
     if os.path.exists(intermediate_file):
         os.remove(intermediate_file)
-        log_activity(f"Cleared existing intermediate file: {intermediate_file}")
+        log_variation_activity(f"Cleared existing intermediate file: {intermediate_file}")
 
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
     out_fields = list(fieldnames or []) + ["generated_description", "prompt_variation", "total_input_tokens", "total_output_tokens", "total_tokens"]
 
-    log_activity(f"target_prs len {len(target_prs)}")
+    log_variation_activity(f"target_prs len {len(target_prs)}")
     # Collect all data for JSON output
     all_data = []
 
-    with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as outfile:
+    with open(variation_output_file, "w", newline="", encoding="utf-8") as outfile:
         writer = csv.DictWriter(outfile, fieldnames=out_fields)
         writer.writeheader()
 
         for pr_idx, (pr_id, files) in enumerate(list(target_prs.items())):
-            log_activity(f"Processing PR {pr_id} with {len(files)} files...")
+            log_variation_activity(f"Processing PR {pr_id} with {len(files)} files...")
 
             # Access pr_total_size_bytes from target_prs if present
             pr_total_size_bytes = (
@@ -604,19 +616,19 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
                 if target_prs[pr_id] and "pr_total_size_bytes" in target_prs[pr_id][0]
                 else None
             )
-            log_activity(f"PR {pr_id} total size (bytes): {pr_total_size_bytes}")
+            log_variation_activity(f"PR {pr_id} total size (bytes): {pr_total_size_bytes}")
 
             file_chunks = chunk_pr_files(files)
             chunk_outputs = []
 
             for i, chunk in enumerate(file_chunks):
-                log_activity(f"  Chunk {i+1}/{len(file_chunks)} for PR {pr_id}")
+                log_variation_activity(f"  Chunk {i+1}/{len(file_chunks)} for PR {pr_id}")
                 prompt = format_pr_prompt_with_variation(chunk, prompt_variation_key)
                 messages = build_messages_with_variation(
                     examples, prompt, prompt_variation_key
                 )
                 # Log the messages as JSON
-                log_activity(
+                log_variation_activity(
                     f"Messages for PR {pr_id} chunk {i+1}:\n"
                     + json.dumps(messages, indent=2, ensure_ascii=False)
                 )
@@ -645,7 +657,7 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
             total_output_tokens = total_chunk_output_tokens + merge_output_tokens
             total_tokens = total_input_tokens + total_output_tokens
 
-            log_activity(f"PR {pr_id} total tokens - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
+            log_variation_activity(f"PR {pr_id} total tokens - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
 
             # Use the original title from the first chunk
             original_title = all_titles[0] if all_titles else ""
@@ -667,11 +679,11 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
                 all_data.append(dict(row))  # Add to JSON data collection
 
     # Save as JSON
-    with open(OUTPUT_JSON_FILE, "w", encoding="utf-8") as json_file:
+    with open(variation_json_file, "w", encoding="utf-8") as json_file:
         json.dump(all_data, json_file, indent=2, ensure_ascii=False)
 
-    log_activity(f"Saved CSV output to {OUTPUT_FILE}")
-    log_activity(f"Saved JSON output to {OUTPUT_JSON_FILE}")
+    log_variation_activity(f"Saved CSV output to {variation_output_file}")
+    log_variation_activity(f"Saved JSON output to {variation_json_file}")
 
 
 def run_all_variations():
