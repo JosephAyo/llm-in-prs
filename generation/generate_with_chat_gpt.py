@@ -24,7 +24,7 @@ OUTPUT_FILE = f"./datasets/{MODE}_shot_generated.csv"
 OUTPUT_JSON_FILE = f"./datasets/{MODE}_shot_generated.json"
 LOG_PATH = f"./datasets/{MODE}_shot_output.log"
 MAX_EXAMPLES = {"zero": 0, "one": 1, "few": 3}[MODE]
-MAX_PROMPT_TOKENS = 8000  # Leave room below 10k TPM
+MAX_PROMPT_TOKENS = 32000
 USE_MOCK = False
 INTERMEDIATE_FILE = "./datasets/intermediate_chunk_outputs.csv"
 
@@ -216,9 +216,11 @@ def call_chatgpt(messages, max_retries=3):
         except Exception as e:
             error_msg = str(e)
             log_activity(f"Error: {error_msg}")
-            if '429' in error_msg or 'rate limit' in error_msg.lower():
+            if "429" in error_msg or "rate limit" in error_msg.lower():
                 wait_time = 65  # 1 minute and a bit
-                log_activity(f"Rate limit hit. Waiting {wait_time} seconds before retrying...")
+                log_activity(
+                    f"Rate limit hit. Waiting {wait_time} seconds before retrying..."
+                )
                 time.sleep(wait_time)
                 retries += 1
             else:
