@@ -1,0 +1,47 @@
+Your task is to create a copy of the generate_with_chat_gpt script that generates descriptions. The goal is to update the script to use a prompt variation matrix (see the pasted image) to systematically generate different versions of the same prompt.
+
+Phase 1: Implement the Prompt Variation Matrix
+The first step is to implement the prompt variation table as a data structure in the script.
+
+1. Create the Data Structure:
+Using the matrix image, create a Python data structure (e.g., a dictionary of dictionaries or a list of dictionaries) that represents the prompt variation table. Each entry in the data structure will correspond to a Prompt Variation (e.g., 'P-1', 'P-2', etc.). The keys for each entry should correspond to the prompt components: repo_name_and_path, pr_title, pr_diffs, pr_file_contents, pr_issue_context, pr_template_content, and few_shot_examples. The values should be booleans (True/False) representing whether that component is included in the prompt for that variation.
+
+PROMPT_VARIATIONS = {
+    "P-1_Minimal": {
+        "repo_name_and_path": True,
+        "pr_title": False,
+        "pr_diffs": False,
+        "pr_file_contents": False,
+        "pr_issue_context": False,
+        "pr_template_content": False,
+        "few_shot_examples": False,
+    },
+    "P-2_Basic": {
+        "repo_name_and_path": True,
+        "pr_title": True,
+        "pr_diffs": False,
+        "pr_file_contents": False,
+        "pr_issue_context": False,
+        "pr_template_content": False,
+        "few_shot_examples": False,
+    },
+    # ... and so on for all 9 variations from the table
+    "P-9_Full_Plus_Few_Shot": {
+        "repo_name_and_path": True,
+        "pr_title": True,
+        "pr_diffs": True,
+        "pr_file_contents": True,
+        "pr_issue_context": True,
+        "pr_template_content": True,
+        "few_shot_examples": True,
+    }
+}
+
+Phase 2: Modify the Prompt Generation Logic
+Now, modify the existing script's function that builds the prompt for the LLM.
+
+1. Update the Function Signature:
+Update the main prompt-building function to accept a new argument, prompt_variation_key (e.g., a string like 'P-1_Minimal'). This will tell the function which variation to generate.
+
+2. Implement Conditional Logic:
+Inside the function, use the PROMPT_VARIATIONS data structure to decide which components to include in the prompt string. For each component (e.g., pr_title, pr_diffs), wrap the existing code that adds it to the prompt in a conditional statement that checks the value from the PROMPT_VARIATIONS dictionary.
