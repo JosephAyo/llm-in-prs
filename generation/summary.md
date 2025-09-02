@@ -161,22 +161,22 @@ python generate_with_prompt_variations.py --variation P-3_Diffs_Only --mock
 
 ```bash
 # Basic one-shot with minimal context
-python generate_with_prompt_variations.py --variation P-10_Basic_One_Shot --mock
+pyenv exec python generate_with_prompt_variations.py --variation P-9_Basic_One_Shot --mock
 
 # Full context with one example
-python generate_with_prompt_variations.py --variation P-11_Full_Plus_One_Shot
+pyenv exec python generate_with_prompt_variations.py --variation P-11_Full_Plus_Few_Shot
 ```
 
 ### Generate descriptions for all variations
 
 ```bash
-python generate_with_prompt_variations.py --all
+pyenv exec python generate_with_prompt_variations.py --all
 ```
 
 ### Generate with specific variation
 
 ```bash
-python generate_with_prompt_variations.py --variation P-8_Full_Context
+pyenv exec python generate_with_prompt_variations.py --variation P-8_Full_Context
 ```
 
 ## File Structure
