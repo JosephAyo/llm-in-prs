@@ -84,19 +84,19 @@ def create_detection_entries(row, csv_filename):
 
     entries = []
 
-    # Original description
+    # Original description - use unified key to avoid duplicates across prompt variations
     if is_significant(original_description):
         entries.append(
             {
                 "id": row_id,
-                "prompt_variation": prompt_variation,
+                "prompt_variation": "original",  # Use "original" as the variation for all originals
                 "type": "original",
                 "input_text": original_description,
-                "entry_key": f"{row_id}_{prompt_variation}_original",
+                "entry_key": f"{row_id}_original",  # Unified key without prompt variation
             }
         )
 
-    # Generated description
+    # Generated description - keep unique per prompt variation
     if is_significant(generated_description):
         entries.append(
             {
