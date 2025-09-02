@@ -220,12 +220,27 @@ def load_examples(file_path):
 
 # === Extract repository name and path from PR files ===
 def extract_repo_info(pr_files):
-    """Extract repository name and path from the first PR file."""
-    if pr_files:
-        repo = pr_files[0].get("repository", "")
-        # For now, we'll use the repository field as is
-        return f"Repository: {repo}"
-    return "Repository: Unknown"
+    """Extract repository name, path, and file statistics from PR files."""
+    if not pr_files:
+        return "Repository: Unknown"
+    
+    repo = pr_files[0].get("repository", "")
+    repo_info = [f"Repository: {repo}"]
+    
+    # Add file statistics for each file
+    file_stats = []
+    for f in pr_files:
+        filename = f.get("filename", "")
+        additions = f.get("additions", 0)
+        deletions = f.get("deletions", 0)
+        changes = f.get("changes", 0)
+        file_stats.append(f"Filename: `{filename}`, Additions: {additions}, Deletions: {deletions}, Changes: {changes}")
+    
+    if file_stats:
+        repo_info.append("Files:")
+        repo_info.extend(file_stats)
+    
+    return "\n".join(repo_info)
 
 
 # === Format PR template content ===
