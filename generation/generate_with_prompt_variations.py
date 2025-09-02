@@ -271,59 +271,98 @@ def format_pr_prompt_with_variation(pr_files, prompt_variation_key):
     variation = PROMPT_VARIATIONS[prompt_variation_key]
     parts = []
 
-    # Add repo name and path (always included based on matrix)
+    # --- Prompt Structure and Delimiters ---
+    # Minimal prompt (P-1): simple instruction, no extra structure
+    if prompt_variation_key == "P-1_Minimal":
+        repo_info = (
+            extract_repo_info(pr_files) if variation["repo_name_and_path"] else ""
+        )
+        return f"Generate a concise description for this PR.\n\n{repo_info}"
+
+    # For all other prompts, use delimiters and explicit instructions
+    # Always repeat instructions before and after context
+    # Add planning/outline step and negative prompt
+    instructions = []
+    instructions.append(
+        """### INSTRUCTIONS
+You are to write a concise, clear, and informative GitHub pull request description based on the provided context.
+Follow these steps:
+1. Read all provided context and code carefully.
+2. First, list the major changes or bullet points summarizing the PR (planning step).
+3. Then, write a final JSON object with a single, cohesive description.
+4. If available, use the PR title, issue context, and template guidelines to inform your summary.
+5. Do not copy code; describe what it does.
+6. Do not speculate on motivation or add information not present in the files, title, or issues.
+7. Respond ONLY with a valid JSON object: {\"description\": \"<description>\"}
+### END INSTRUCTIONS"""
+    )
+
+    # Adaptive chunking note
+    chunk_note = ""
+    # If chunked, add a note for the model
+    # (Assume pr_files has an attribute or pass chunk info; here, check for a 'chunk_index' or similar)
+    chunk_count = getattr(pr_files, 'chunk_count', None) or None
+    chunk_index = getattr(pr_files, 'chunk_index', None) or None
+    if chunk_count and chunk_count > 1:
+        part_num = str(chunk_index + 1) if chunk_index is not None else '?'
+        chunk_note = f"\n\nNOTE: This is part {part_num} of {chunk_count}. At the end, you will be asked to merge all summaries into a single, cohesive PR description."
+
+    # --- Context Section ---
+    context_parts = []
     if variation["repo_name_and_path"]:
         repo_info = extract_repo_info(pr_files)
-        parts.append(repo_info)
-
-    # Add PR title
-    if variation["pr_title"] and pr_files:
+        context_parts.append(f"<repo>\n{repo_info}\n</repo>")
+    if variation.get("pr_title") and pr_files:
         title = pr_files[0]["title"]
-        parts.append(f"PR Title: {title}")
-
-    # Add issue context (issue_titles and issue_bodies only)
-    if variation["pr_issue_context"]:
+        context_parts.append(f"<title>\n{title}\n</title>")
+    if variation.get("pr_issue_context"):
         issue_context = format_issue_context(pr_files)
         if issue_context:
-            parts.append(issue_context)
-
-    # Add template content
-    if variation["pr_template_content"]:
+            context_parts.append(f"<issue_context>\n{issue_context}\n</issue_context>")
+    if variation.get("pr_template_content"):
         template_content = format_template_content()
-        parts.append(template_content)
+        context_parts.append(f"<template>\n{template_content}\n</template>")
 
-    # Add file-specific content (diffs and file contents)
+    # File-specific content
     file_parts = []
     for f in pr_files:
         file_part_components = []
-
-        # Always include filename for context
         file_part_components.append(f"Filename: `{f['filename']}`")
         file_part_components.append(f"Status: {f['status']}")
         file_part_components.append(
             f"Additions: {f['additions']}, Deletions: {f['deletions']}, Changes: {f['changes']}"
         )
-
-        # Add file contents if enabled
-        if variation["pr_file_contents"]:
+        if variation.get("pr_file_contents"):
             file_content = f.get("file_content", "")
             if file_content:
-                file_part_components.append(f"File Content: ```{file_content}```")
-
-        # Add diffs if enabled
-        if variation["pr_diffs"]:
+                file_part_components.append(
+                    f"File Content:\n" + '"""' + f"\n{file_content}\n" + '"""'
+                )
+        if variation.get("pr_diffs"):
             patch_lines = f["patch"].splitlines()
             trimmed_patch = "\n".join(patch_lines)
             file_part_components.append(f"Patch:\n```diff\n{trimmed_patch}\n```")
-
         file_parts.append("\n".join(file_part_components))
-
     if file_parts:
-        parts.append("Files:\n\n" + "\n\n---\n\n".join(file_parts))
+        context_parts.append(
+            "<files>\n" + "\n\n---\n\n".join(file_parts) + "\n</files>"
+        )
 
-    # Combine all parts
-    prompt_content = "\n\n".join(parts)
-    return f"Generate a description for this PR:\n\n{prompt_content}"
+    # Combine all
+    prompt_sections = []
+    prompt_sections.append(instructions[0])
+    if chunk_note:
+        prompt_sections.append(chunk_note)
+    prompt_sections.append(
+        """### CONTEXT
+"""
+        + "\n\n".join(context_parts)
+        + "\n### END CONTEXT"
+    )
+    # Always repeat instructions after context for all variations
+    prompt_sections.append(instructions[0])
+
+    return "\n\n".join(prompt_sections)
 
 
 # === Format assistant example ===
@@ -422,7 +461,11 @@ def call_chatgpt(messages, max_retries=3):
     if USE_MOCK:
         # For mock, calculate estimated token usage
         input_tokens = sum(len(ENCODER.encode(str(msg))) for msg in messages)
-        output_tokens = len(ENCODER.encode("Mock generated PR description with detailed technical content covering multiple aspects of the implementation."))
+        output_tokens = len(
+            ENCODER.encode(
+                "Mock generated PR description with detailed technical content covering multiple aspects of the implementation."
+            )
+        )
         return mock_chatgpt(messages), input_tokens, output_tokens
 
     retries = 0
@@ -438,13 +481,17 @@ def call_chatgpt(messages, max_retries=3):
                 input_tokens = response.usage.prompt_tokens
                 output_tokens = response.usage.completion_tokens
                 total_tokens = response.usage.total_tokens
-                
-                log_activity(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
-                
+
+                log_activity(
+                    f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}"
+                )
+
                 return response.choices[0].message.content, input_tokens, output_tokens
             else:
                 # Fallback if usage info is not available
-                log_activity("Warning: No usage information available from API response")
+                log_activity(
+                    "Warning: No usage information available from API response"
+                )
                 return response.choices[0].message.content if response else None, 0, 0
         except Exception as e:
             error_msg = str(e)
@@ -465,9 +512,16 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
     # Use current INTERMEDIATE_FILE if no specific file is provided
     if output_file is None:
         output_file = INTERMEDIATE_FILE
-    
-    fieldnames = ["pr_id", "chunk_index", "chunk_title", "chunk_description", "input_tokens", "output_tokens"]
-    
+
+    fieldnames = [
+        "pr_id",
+        "chunk_index",
+        "chunk_title",
+        "chunk_description",
+        "input_tokens",
+        "output_tokens",
+    ]
+
     # Check if file exists to determine if we need to write header
     file_exists = False
     try:
@@ -475,7 +529,7 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
             file_exists = True
     except FileNotFoundError:
         file_exists = False
-    
+
     with open(output_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
@@ -487,7 +541,7 @@ def save_intermediate_chunks(pr_id, chunk_outputs, output_file=None):
                 input_tokens, output_tokens = 0, 0
             else:
                 title, desc, input_tokens, output_tokens = chunk_data
-            
+
             writer.writerow(
                 {
                     "pr_id": pr_id,
@@ -574,30 +628,50 @@ def extract_title_description(response, original_title=None):
 # === MAIN PIPELINE ===
 def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
     """Process all PRs using the specified prompt variation."""
-    
+
     # Create variation-specific file paths
-    variation_output_file = f"./datasets/prompt_variation_{prompt_variation_key}_generated.csv"
-    variation_json_file = f"./datasets/prompt_variation_{prompt_variation_key}_generated.json"
-    variation_log_path = f"./datasets/prompt_variation_{prompt_variation_key}_output.log"
-    intermediate_file = f"datasets/prompt_variation_{prompt_variation_key}_intermediate_chunks.csv"
-    
+    variation_output_file = (
+        f"./datasets/prompt_variation_{prompt_variation_key}_generated.csv"
+    )
+    variation_json_file = (
+        f"./datasets/prompt_variation_{prompt_variation_key}_generated.json"
+    )
+    variation_log_path = (
+        f"./datasets/prompt_variation_{prompt_variation_key}_output.log"
+    )
+    intermediate_file = (
+        f"datasets/prompt_variation_{prompt_variation_key}_intermediate_chunks.csv"
+    )
+
     # Create a local logging function that uses the variation-specific log file
     def log_variation_activity(activity: str):
         log = f"{datetime.datetime.now()}: {activity}\n"
         with open(variation_log_path, "a") as log_file:
             log_file.write(log)
-    
-    log_variation_activity(f"Starting processing with prompt variation: {prompt_variation_key}")
-    log_variation_activity(f"Variation settings: {PROMPT_VARIATIONS[prompt_variation_key]}")
+
+    log_variation_activity(
+        f"Starting processing with prompt variation: {prompt_variation_key}"
+    )
+    log_variation_activity(
+        f"Variation settings: {PROMPT_VARIATIONS[prompt_variation_key]}"
+    )
 
     # Clear intermediate file for this variation to ensure fresh start
     if os.path.exists(intermediate_file):
         os.remove(intermediate_file)
-        log_variation_activity(f"Cleared existing intermediate file: {intermediate_file}")
+        log_variation_activity(
+            f"Cleared existing intermediate file: {intermediate_file}"
+        )
 
     examples = load_examples(EXAMPLE_FILE)
     target_prs, fieldnames = group_by_pr(TARGET_FILE)
-    out_fields = list(fieldnames or []) + ["generated_description", "prompt_variation", "total_input_tokens", "total_output_tokens", "total_tokens"]
+    out_fields = list(fieldnames or []) + [
+        "generated_description",
+        "prompt_variation",
+        "total_input_tokens",
+        "total_output_tokens",
+        "total_tokens",
+    ]
 
     log_variation_activity(f"target_prs len {len(target_prs)}")
     # Collect all data for JSON output
@@ -616,13 +690,17 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
                 if target_prs[pr_id] and "pr_total_size_bytes" in target_prs[pr_id][0]
                 else None
             )
-            log_variation_activity(f"PR {pr_id} total size (bytes): {pr_total_size_bytes}")
+            log_variation_activity(
+                f"PR {pr_id} total size (bytes): {pr_total_size_bytes}"
+            )
 
             file_chunks = chunk_pr_files(files)
             chunk_outputs = []
 
             for i, chunk in enumerate(file_chunks):
-                log_variation_activity(f"  Chunk {i+1}/{len(file_chunks)} for PR {pr_id}")
+                log_variation_activity(
+                    f"  Chunk {i+1}/{len(file_chunks)} for PR {pr_id}"
+                )
                 prompt = format_pr_prompt_with_variation(chunk, prompt_variation_key)
                 messages = build_messages_with_variation(
                     examples, prompt, prompt_variation_key
@@ -647,17 +725,25 @@ def process_all_prs_with_variation(prompt_variation_key=PROMPT_VARIATION):
             # Combine chunk outputs and calculate token totals
             all_titles = [title for title, _, _, _ in chunk_outputs]
             all_descriptions = [desc for _, desc, _, _ in chunk_outputs]
-            total_chunk_input_tokens = sum(input_tokens for _, _, input_tokens, _ in chunk_outputs)
-            total_chunk_output_tokens = sum(output_tokens for _, _, _, output_tokens in chunk_outputs)
+            total_chunk_input_tokens = sum(
+                input_tokens for _, _, input_tokens, _ in chunk_outputs
+            )
+            total_chunk_output_tokens = sum(
+                output_tokens for _, _, _, output_tokens in chunk_outputs
+            )
 
-            merged_response, merge_input_tokens, merge_output_tokens = merge_descriptions_with_gpt(all_descriptions)
+            merged_response, merge_input_tokens, merge_output_tokens = (
+                merge_descriptions_with_gpt(all_descriptions)
+            )
 
             # Calculate total token usage for this PR
             total_input_tokens = total_chunk_input_tokens + merge_input_tokens
             total_output_tokens = total_chunk_output_tokens + merge_output_tokens
             total_tokens = total_input_tokens + total_output_tokens
 
-            log_variation_activity(f"PR {pr_id} total tokens - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
+            log_variation_activity(
+                f"PR {pr_id} total tokens - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}"
+            )
 
             # Use the original title from the first chunk
             original_title = all_titles[0] if all_titles else ""

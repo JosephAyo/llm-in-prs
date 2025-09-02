@@ -1,3 +1,34 @@
+
+# Summary of prompt engineering enhancements
+
+## What was changed
+
+- Instructions are now always repeated before and after the context for all prompt variations (not just long-context).
+- Added a planning/outline step: the model is first asked to list major changes or bullet points before writing the final JSON description.
+- Clarified non-goals with a "do not" section (negative prompt) to reduce hallucination and speculation.
+- Added an adaptive chunking note: if a PR is split into multiple chunks, the prompt now tells the model which part it is and to merge all summaries at the end.
+- Maintained clear delimiters and explicit, step-by-step instructions for all prompt levels except minimal (P-1).
+- Minimal prompt (P-1) remains simple and concise.
+
+## Why
+
+- To further improve the quality, reliability, and consistency of generated PR descriptions by leveraging advanced prompt engineering techniques and reducing model hallucination.
+
+## How
+
+- Refactored the prompt assembly logic to always repeat instructions, add a planning step, clarify non-goals, and include adaptive chunking notes when needed.
+
+---
+
+### Conventional Commit Message
+
+feat(prompt): reinforce instructions, add planning step, clarify non-goals, and support chunked PRs
+
+- Always repeat instructions before and after context
+- Add planning/outline step before final description
+- Add negative prompt to reduce hallucination
+- Add adaptive chunking note for multi-part PRs
+
 # Prompt Variation Matrix Implementation Summary
 
 ## Overview
