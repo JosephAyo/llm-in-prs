@@ -151,6 +151,16 @@ def run_detection_on_prompt_variations(
 
     log_activity(f"Created {len(all_entries)} detection entries from {len(csv_files)} CSV files")
 
+    # Remove duplicates based on entry_key (this handles duplicate originals across prompt variations)
+    unique_entries = {}
+    for entry in all_entries:
+        entry_key = entry["entry_key"]
+        if entry_key not in unique_entries:
+            unique_entries[entry_key] = entry
+    
+    all_entries = list(unique_entries.values())
+    log_activity(f"After deduplication: {len(all_entries)} unique detection entries")
+
     # Filter out already processed entries
     entries_to_process = [
         entry for entry in all_entries if entry["entry_key"] not in processed_entries
