@@ -52,7 +52,7 @@ pr_descriptions = [
 
 def run_python_script(script_path, text):
     result = subprocess.run(
-        ["python", script_path, text],
+        ["/Users/mac/.pyenv/versions/3.12.9/bin/python", script_path, text],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

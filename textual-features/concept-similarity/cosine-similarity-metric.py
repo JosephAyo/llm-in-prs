@@ -28,11 +28,6 @@ def compute_description_code_similarity(description, changed_lines):
     desc_vec = tfidf_matrix[0]  # type: ignore
     code_vecs = tfidf_matrix[1:]  # type: ignore
 
-
-    # Compute cosine similarity
-    sims = cosine_similarity(desc_vec, code_vecs)[0]
-
-
     # Compute cosine similarity
     sims = cosine_similarity(desc_vec, code_vecs)[0]
 
