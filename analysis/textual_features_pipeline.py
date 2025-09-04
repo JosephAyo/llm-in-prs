@@ -93,22 +93,20 @@ class TextualFeatureExtractor:
         return sentence_matches / total_tokens if total_tokens > 0 else 0.0
     
     def get_readability_score(self, text):
-        """Get readability score using subprocess call to Java implementation."""
+        """Get readability score using textstat_readability (flesch_reading_ease)."""
         try:
-            readability_script = self.textual_features_path / 'readability' / 'readability_score.py'
-            result = subprocess.run(
-                [sys.executable, str(readability_script), text],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=str(self.textual_features_path / 'readability'),
-                timeout=30
-            )
-            
-            if result.returncode != 0:
+            import importlib.util
+            import sys
+            import pathlib
+            tf_path = pathlib.Path(__file__).parent.parent / 'textual-features' / 'readability' / 'textstat_readability.py'
+            spec = importlib.util.spec_from_file_location("textstat_readability", str(tf_path))
+            if spec is None or spec.loader is None:
                 return None
-            
-            return float(result.stdout.strip())
+            tf_module = importlib.util.module_from_spec(spec)
+            sys.modules["textstat_readability"] = tf_module
+            spec.loader.exec_module(tf_module)
+            features = tf_module.compute_readability_features(text)
+            return features.get("flesch_reading_ease", None)
         except Exception:
             return None
     
@@ -131,8 +129,8 @@ class TextualFeatureExtractor:
             vectorizer = TfidfVectorizer(stop_words='english', token_pattern=r'\b\w+\b')
             tfidf_matrix = vectorizer.fit_transform(documents)
             
-            desc_vec = tfidf_matrix[0]
-            code_vecs = tfidf_matrix[1:]
+            desc_vec = tfidf_matrix[0]  # type: ignore
+            code_vecs = tfidf_matrix[1:]  # type: ignore
             
             sims = cosine_similarity(desc_vec, code_vecs)[0]
             return float(np.max(sims)) if len(sims) > 0 else 0.0
