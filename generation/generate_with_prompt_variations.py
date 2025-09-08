@@ -18,111 +18,91 @@ with open("./env/tokens.txt", "r") as f:
     openai.api_key = f.read().strip()
 
 ### === PROMPT VARIATION MATRIX === ###
+# Updated prompt variations based on research matrix - September 2025
+# This matrix defines 6 progressive prompt variations for PR description generation
+# Each variation builds upon the previous one by adding more context components
+# 
+# Matrix components:
+# - repo_name_and_path: Repository name and file pathnames (always included)
+# - pr_template_content: PR template guidelines 
+# - pr_title: Pull request title
+# - pr_diffs: Code diffs/changes
+# - pr_file_contents: Full file contents
+# - pr_issue_context: Related issue information
+#
+# Progression: P-1 (minimal) → P-6 (full context)
 PROMPT_VARIATIONS = {
-    "P-1_Minimal": {
+    # P-1: Minimal - Only repository name and file pathnames
+    "P-1": {
         "repo_name_and_path": True,
+        "pr_template_content": False,
         "pr_title": False,
         "pr_diffs": False,
         "pr_file_contents": False,
         "pr_issue_context": False,
-        "pr_template_content": False,
         "few_shot_examples": False,
+        "one_shot_examples": False,
     },
-    "P-2_Basic": {
+    # P-2: Add PR template content
+    "P-2": {
         "repo_name_and_path": True,
-        "pr_title": True,
-        "pr_diffs": False,
-        "pr_file_contents": False,
-        "pr_issue_context": False,
-        "pr_template_content": False,
-        "few_shot_examples": False,
-    },
-    "P-3_Diffs_Only": {
-        "repo_name_and_path": True,
+        "pr_template_content": True,
         "pr_title": False,
-        "pr_diffs": True,
-        "pr_file_contents": False,
-        "pr_issue_context": False,
-        "pr_template_content": False,
-        "few_shot_examples": False,
-    },
-    "P-4_Diffs_Plus_Title": {
-        "repo_name_and_path": True,
-        "pr_title": True,
-        "pr_diffs": True,
-        "pr_file_contents": False,
-        "pr_issue_context": False,
-        "pr_template_content": False,
-        "few_shot_examples": False,
-    },
-    "P-5_Code_Only": {
-        "repo_name_and_path": True,
-        "pr_title": True,
-        "pr_diffs": True,
-        "pr_file_contents": True,
-        "pr_issue_context": False,
-        "pr_template_content": False,
-        "few_shot_examples": False,
-    },
-    "P-6_Issue_Only": {
-        "repo_name_and_path": True,
-        "pr_title": True,
         "pr_diffs": False,
         "pr_file_contents": False,
-        "pr_issue_context": True,
-        "pr_template_content": False,
+        "pr_issue_context": False,
         "few_shot_examples": False,
+        "one_shot_examples": False,
     },
-    "P-7_Template_Plus_Title": {
+    # P-3: Add PR title
+    "P-3": {
         "repo_name_and_path": True,
+        "pr_template_content": True,
         "pr_title": True,
         "pr_diffs": False,
         "pr_file_contents": False,
         "pr_issue_context": False,
-        "pr_template_content": True,
         "few_shot_examples": False,
+        "one_shot_examples": False,
     },
-    "P-8_Full_Context": {
+    # P-4: Add PR diffs
+    "P-4": {
         "repo_name_and_path": True,
+        "pr_template_content": True,
         "pr_title": True,
         "pr_diffs": True,
-        "pr_file_contents": True,
-        "pr_issue_context": True,
-        "pr_template_content": True,
-        "few_shot_examples": False,
-    },
-    "P-9_Basic_One_Shot": {
-        "repo_name_and_path": True,
-        "pr_title": True,
-        "pr_diffs": False,
         "pr_file_contents": False,
         "pr_issue_context": False,
-        "pr_template_content": False,
-        "one_shot_examples": True,
+        "few_shot_examples": False,
+        "one_shot_examples": False,
     },
-    "P-10_Full_Plus_One_Shot": {
+    # P-5: Add PR file contents
+    "P-5": {
         "repo_name_and_path": True,
+        "pr_template_content": True,
+        "pr_title": True,
+        "pr_diffs": True,
+        "pr_file_contents": True,
+        "pr_issue_context": False,
+        "few_shot_examples": False,
+        "one_shot_examples": False,
+    },
+    # P-6: Full context - Add PR issue context
+    "P-6": {
+        "repo_name_and_path": True,
+        "pr_template_content": True,
         "pr_title": True,
         "pr_diffs": True,
         "pr_file_contents": True,
         "pr_issue_context": True,
-        "pr_template_content": True,
-        "one_shot_examples": True,
-    },
-    "P-11_Full_Plus_Few_Shot": {
-        "repo_name_and_path": True,
-        "pr_title": True,
-        "pr_diffs": True,
-        "pr_file_contents": True,
-        "pr_issue_context": True,
-        "pr_template_content": True,
-        "few_shot_examples": True,
+        "few_shot_examples": False,
+        "one_shot_examples": False,
     },
 }
 
 ### === CONFIG === ###
-# Modified to support prompt variations
-PROMPT_VARIATION = "P-9_Basic_One_Shot"  # Change this to test different variations
+# Modified to support updated prompt variations (P-1 through P-6)
+PROMPT_VARIATION = "P-1"  # Change this to test different variations (P-1, P-2, P-3, P-4, P-5, P-6)
 EXAMPLE_FILE = "../pr_files/datasets/few_shot_examples_with_issues_and_files.csv"
 TARGET_FILE = "../pr_files/datasets/golden_dataset_with_issues_and_files.csv"
 OUTPUT_FILE = f"./datasets/prompt_variation_{PROMPT_VARIATION}_generated.csv"
@@ -288,7 +268,7 @@ def format_pr_prompt_with_variation(pr_files, prompt_variation_key):
 
     # --- Prompt Structure and Delimiters ---
     # Minimal prompt (P-1): simple instruction, no extra structure
-    if prompt_variation_key == "P-1_Minimal":
+    if prompt_variation_key == "P-1":
         repo_info = (
             extract_repo_info(pr_files) if variation["repo_name_and_path"] else ""
         )
@@ -824,7 +804,7 @@ if __name__ == "__main__":
         "--variation",
         type=str,
         default=PROMPT_VARIATION,
-        help="Prompt variation to use (e.g., P-1_Minimal)",
+        help="Prompt variation to use (e.g., P-1, P-2, P-3, P-4, P-5, P-6)",
     )
     parser.add_argument("--all", action="store_true", help="Run all prompt variations")
     parser.add_argument(

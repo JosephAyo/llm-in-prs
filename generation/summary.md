@@ -1,5 +1,63 @@
 
-# Summary of prompt engineering enhancements
+# Prompt Variations Update Summary - September, 09, 2025
+
+## Changes Made
+
+### What was changed:
+- **Updated PROMPT_VARIATIONS dictionary**: Replaced the existing 11 prompt variations (P-1_Minimal through P-11_Full_Plus_Few_Shot) with 6 new progressive variations (P-1 through P-6) based on the research matrix.
+- **Simplified naming convention**: Changed from descriptive names like "P-1_Minimal" to simple numerical format "P-1".
+- **Updated default configuration**: Changed default PROMPT_VARIATION from "P-9_Basic_One_Shot" to "P-1".
+- **Updated special handling**: Modified the minimal prompt handling to use "P-1" instead of "P-1_Minimal".
+- **Updated help text**: Updated argument parser help text to reflect the new variation names.
+
+### Why it was changed:
+- **Research alignment**: The new variations follow a specific research matrix that progressively adds context components in a controlled manner.
+- **Cleaner progression**: The new matrix provides a cleaner progression from minimal context (P-1) to full context (P-6).
+- **Standardized approach**: Each variation builds upon the previous one by adding exactly one new component, making it easier to analyze the impact of each component.
+
+### New Prompt Variation Matrix:
+- **P-1**: Repository name and file pathnames only (minimal)
+- **P-2**: P-1 + PR template content
+- **P-3**: P-2 + PR title
+- **P-4**: P-3 + PR diffs
+- **P-5**: P-4 + PR file contents
+- **P-6**: P-5 + PR issue context (full context)
+
+### How to extend it in the future:
+1. **Adding new components**: Add new boolean fields to the variation dictionaries (e.g., `"pr_comments": True`).
+2. **Adding new variations**: Add new entries to the PROMPT_VARIATIONS dictionary following the same structure.
+3. **Modifying component handling**: Update the `format_pr_prompt_with_variation()` function to handle new components.
+4. **Testing new variations**: Use the `--variation` flag to test individual variations or `--all` to test all variations.
+
+### Usage Examples:
+```bash
+# Test a specific variation
+pyenv exec python generate_with_prompt_variations.py --variation P-3
+
+# Test all variations
+pyenv exec python generate_with_prompt_variations.py --all
+
+# Test with mock responses
+pyenv exec python generate_with_prompt_variations.py --variation P-1 --mock
+```
+
+## Commit Message (Conventional Commits)
+
+```
+feat(generation): update prompt variations to progressive research matrix
+
+- Replace 11 complex variations with 6 progressive variations (P-1 to P-6)
+- Simplify naming from descriptive to numerical format
+- Each variation progressively adds one component for controlled analysis
+- Update default configuration to use P-1 (minimal variation)
+- Maintain backward compatibility in core functionality
+
+BREAKING CHANGE: Old prompt variation names (P-1_Minimal, P-2_Basic, etc.) are no longer available
+```
+
+---
+
+# Previous Summary of prompt engineering enhancements
 
 ## What was changed
 
@@ -20,7 +78,7 @@
 
 ---
 
-### Conventional Commit Message
+### Previous Conventional Commit Message
 
 feat(prompt): reinforce instructions, add planning step, clarify non-goals, and support chunked PRs
 
@@ -28,26 +86,6 @@ feat(prompt): reinforce instructions, add planning step, clarify non-goals, and 
 - Add planning/outline step before final description
 - Add negative prompt to reduce hallucination
 - Add adaptive chunking note for multi-part PRs
-
-# Prompt Variation Matrix Implementation Summary
-
-## Overview
-
-I've implemented a new script `generate_with_prompt_variations.py` that extends the original `generate_with_chat_gpt.py` to support systematic prompt variations for PR description generation.
-
-## Key Features
-
-### 1. Prompt Variation Matrix
-
-Implemented all 11 prompt variations from the matrix:
-
-- **P-1_Minimal**: Only repo name/path
-- **P-2_Basic**: Repo + PR title
-- **P-3_Diffs_Only**: Repo + diffs
-- **P-4_Diffs_Plus_Title**: Repo + title + diffs
-- **P-5_Code_Only**: Repo + title + diffs + file contents
-- **P-6_Issue_Only**: Repo + title + issue context
-- **P-7_Template_Plus_Title**: Repo + title + PR template
 - **P-8_Full_Context**: All components except examples
 - **P-9_Basic_One_Shot**: Basic components (repo + title + diffs) with 1 example
 - **P-10_Full_Plus_One_Shot**: All components with 1 example
