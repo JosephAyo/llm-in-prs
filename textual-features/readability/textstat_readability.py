@@ -8,6 +8,7 @@ def clean_text(text: str) -> str:
 
     - Removes inline code blocks wrapped in backticks.
     - Removes code-like tokens such as function calls, snake_case, or CamelCase.
+    - Removes URLs and file paths.
     - Collapses multiple spaces into one.
 
     Args:
@@ -16,13 +17,32 @@ def clean_text(text: str) -> str:
     Returns:
         str: Cleaned natural language text.
     """
-    # Remove inline code blocks or backticks
-    text = re.sub(r"`[^`]*`", "", text)
-    # Remove code-like tokens (function(), variables)
-    text = re.sub(r"[A-Za-z_]+\([^)]*\)", "", text)
-    text = re.sub(r"[_A-Za-z0-9]+", " ", text)
-    # Collapse whitespace
+    # Remove inline code blocks (single and triple backticks)
+    text = re.sub(r"`{3}[^`]*`{3}", " ", text)  # Triple backticks (code blocks)
+    text = re.sub(r"`[^`]*`", " ", text)        # Single backticks (inline code)
+    
+    # Remove function calls with parentheses
+    text = re.sub(r"\b[A-Za-z_][A-Za-z0-9_]*\([^)]*\)", " ", text)
+    
+    # Remove URLs and file paths
+    text = re.sub(r"https?://[^\s]+", " ", text)
+    text = re.sub(r"[/\\][A-Za-z0-9_./\\-]+", " ", text)
+    
+    # Remove specific code-like patterns (but preserve normal words)
+    text = re.sub(r"\b[A-Z]+_[A-Z_]+\b", " ", text)        # CONSTANT_NAMES
+    text = re.sub(r"\b[a-z]+_[a-z_]+\b", " ", text)        # snake_case variables
+    text = re.sub(r"\b[A-Z][a-z]*[A-Z][A-Za-z]*\b", " ", text)  # CamelCase
+    text = re.sub(r"\b[A-Za-z0-9]+\.[A-Za-z0-9]+\b", " ", text)  # object.method or file.ext
+    
+    # Remove standalone numbers and version strings
+    text = re.sub(r"\b\d+(\.\d+)*\b", " ", text)
+    
+    # Remove special characters that are not punctuation
+    text = re.sub(r"[{}[\]|\\<>@#$%^&*+=~]", " ", text)
+    
+    # Collapse multiple spaces and clean up
     text = re.sub(r"\s+", " ", text).strip()
+    
     return text
 
 
