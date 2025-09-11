@@ -7,7 +7,7 @@ This repository analyzes LLM-generated pull request descriptions through a compr
 **Three-Phase Research Pipeline:**
 1. **Generation** (`generation/`) - Generate PR descriptions using 6 prompt variations (P-1 to P-6)
 2. **Detection** (`detection/`) - Run AI detection analysis using ZeroGPT API
-3. **Analysis** (`analysis/`) - Statistical analysis, cost evaluation, and textual feature extraction
+3. **Analysis** (`analysis/`) - Statistical analysis, cost evaluation, and textual feature extraction, all broken down by original description and prompt variations
 
 **Data Flow:** PR metadata → Prompt variations → LLM generation → AI detection → Statistical analysis
 
@@ -88,6 +88,35 @@ P-6: + pr_issue_context (full context)
 - **Multiple comparisons**: Welch t-tests for pairwise analysis
 - **Publication tables**: Automated markdown/CSV table generation
 
+## Critical Analysis Guidelines
+
+### ⚠️ MANDATORY Comparison Standards
+**ALL analysis must consistently compare ALL variations:**
+- **ALWAYS include Original data** in statistical tests and visualizations
+- **NEVER group all generated content together** - compare each variation separately
+- **ALWAYS compare**: Original, P-1, P-2, P-3, P-4, P-5, P-6 (when available)
+- **BERTScore reference**: ALWAYS use original text as reference for generated variations
+
+### ❌ Common Mistakes to AVOID:
+1. **Inconsistent grouping**: Mixing "Original vs Generated" with "P-1 vs P-6" comparisons
+2. **Missing original**: Running tests only on generated variations (P-1 to P-6)
+3. **Wrong BERTScore reference**: Using generated text as reference instead of original
+4. **Selective comparison**: Including only some variations instead of all available
+
+### ✅ Correct Analysis Patterns:
+```python
+# CORRECT: Include all variations
+all_variations_data['variation_label'] = all_variations_data.apply(
+    lambda row: 'Original' if row['entry_type'] == 'original' else row['prompt_variation'], axis=1
+)
+
+# CORRECT: Statistical tests across ALL variations
+groups = [data[data['variation_label'] == var][feature] for var in ['Original', 'P-1', 'P-2', 'P-3', 'P-4', 'P-5', 'P-6']]
+
+# CORRECT: BERTScore with original reference
+reference_text = original_texts[pr_id] if row['entry_type'] == 'generated' else None
+```
+
 ## Critical Integration Points
 
 ### Dataset Dependencies
@@ -129,3 +158,4 @@ def log_activity(activity: str, log_path=LOG_PATH):
 - new variations (P-7+) or detectors can be added without breaking architecture.
 
 This research codebase prioritizes reproducibility, resumable operations, and comprehensive statistical analysis. Always verify environment setup before executing pipelines and check existing progress files before restarting long-running operations.
+We're trying to see if it's possible to isolate which context has what effect and measure the metrics.
