@@ -13,3 +13,4 @@ openai
 tiktoken
 scikit_learn
 textstat
+bert_score

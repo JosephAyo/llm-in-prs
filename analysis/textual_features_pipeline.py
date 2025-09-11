@@ -4,11 +4,26 @@ Unified Textual Features Pipeline
 This module provides a comprehensive pipeline for extracting textual features
 from LLM-generated descriptions, integrating all scripts from textual-features/.
 
+Features included:
+- Stop word ratio calculation
+- Regex-based features (code elements, questions, sentences)
+- Readability scores (via textstat)
+- Cosine similarity with code samples
+- BERTScore semantic similarity metrics
+
 Usage:
     from textual_features_pipeline import TextualFeatureExtractor
     
     extractor = TextualFeatureExtractor()
+    
+    # Basic feature extraction
     results = extractor.run_all_features(texts)
+    
+    # With BERTScore comparison to reference texts
+    results = extractor.run_all_features(texts, reference_texts=reference_texts)
+    
+    # Individual BERTScore computation
+    bert_scores = extractor.compute_bert_score(candidate_text, reference_text)
 """
 
 import sys
@@ -22,6 +37,7 @@ import re
 import string
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from bert_score import score
 
 
 class TextualFeatureExtractor:
@@ -33,6 +49,7 @@ class TextualFeatureExtractor:
     - Regex-based features (code elements, questions, sentences)
     - Readability scores (via Java dependency)
     - Cosine similarity with code samples
+    - BERTScore semantic similarity metrics for text comparison
     """
     
     def __init__(self, textual_features_path=None):
@@ -59,6 +76,102 @@ class TextualFeatureExtractor:
         if stopword_file.exists():
             with open(stopword_file, 'r', encoding='utf-8') as f:
                 self.stop_words = set(word.strip().lower() for word in f if word.strip())
+    
+    def clean_text_for_bert(self, text: str) -> str:
+        """
+        Clean up text before BERTScore analysis.
+
+        - Removes inline code blocks wrapped in backticks.
+        - Removes URLs and file paths.
+        - Collapses multiple spaces into one.
+
+        Args:
+            text (str): Raw text, possibly containing code artifacts.
+
+        Returns:
+            str: Cleaned natural language text.
+        """
+        # Remove inline code blocks (single and triple backticks)
+        text = re.sub(r"`{3}[^`]*`{3}", " ", text)  # Triple backticks (code blocks)
+        text = re.sub(r"`[^`]*`", " ", text)        # Single backticks (inline code)
+
+        # Remove URLs and file paths
+        text = re.sub(r"https?://[^\s]+", " ", text)
+        text = re.sub(r"[/\\][A-Za-z0-9_./\\-]+", " ", text)
+
+        # Collapse multiple spaces and clean up
+        text = re.sub(r"\s+", " ", text).strip()
+
+        return text
+
+    def compute_bert_score(self, candidate: str, reference: str, lang: str = "en") -> dict:
+        """
+        Compute BERTScore metrics for candidate vs reference text.
+
+        Args:
+            candidate (str): The generated or test text.
+            reference (str): The gold/reference text.
+            lang (str): Language code for BERTScore (default: English).
+
+        Returns:
+            dict: Dictionary containing precision, recall, and F1 scores.
+        """
+        try:
+            cand_clean = self.clean_text_for_bert(candidate)
+            ref_clean = self.clean_text_for_bert(reference)
+
+            # bert-score requires lists of strings
+            P, R, F1 = score([cand_clean], [ref_clean], lang=lang)
+
+            return {
+                "bert_precision": float(P.mean()),
+                "bert_recall": float(R.mean()),
+                "bert_f1": float(F1.mean()),
+            }
+        except Exception as e:
+            # Return None values if BERTScore computation fails
+            return {
+                "bert_precision": None,
+                "bert_recall": None,
+                "bert_f1": None,
+            }
+    
+    def compute_bert_scores_batch(self, candidates: list, references: list, lang: str = "en") -> list:
+        """
+        Compute BERTScore metrics for multiple candidate-reference pairs.
+
+        Args:
+            candidates (list): List of generated or test texts.
+            references (list): List of gold/reference texts.
+            lang (str): Language code for BERTScore (default: English).
+
+        Returns:
+            list: List of dictionaries containing precision, recall, and F1 scores.
+        """
+        try:
+            # Clean all texts
+            cands_clean = [self.clean_text_for_bert(cand) for cand in candidates]
+            refs_clean = [self.clean_text_for_bert(ref) for ref in references]
+
+            # Compute BERTScores for all pairs at once (more efficient)
+            P, R, F1 = score(cands_clean, refs_clean, lang=lang)
+
+            results = []
+            for i in range(len(candidates)):
+                results.append({
+                    "bert_precision": float(P[i]),
+                    "bert_recall": float(R[i]),
+                    "bert_f1": float(F1[i]),
+                })
+            
+            return results
+        except Exception as e:
+            # Return None values if BERTScore computation fails
+            return [{
+                "bert_precision": None,
+                "bert_recall": None,
+                "bert_f1": None,
+            } for _ in candidates]
     
     def get_stop_word_ratio(self, text):
         """Calculate stop word ratio for given text."""
@@ -137,12 +250,13 @@ class TextualFeatureExtractor:
         except Exception:
             return 0.0
     
-    def extract_features(self, text):
+    def extract_features(self, text, reference_text=None):
         """
         Extract all textual features for a single text.
         
         Args:
             text (str): Input text to analyze
+            reference_text (str, optional): Reference text for BERTScore comparison
             
         Returns:
             dict: Dictionary containing all extracted features
@@ -167,14 +281,20 @@ class TextualFeatureExtractor:
         features['sentence_ratio'] = self.get_sentence_ratio(text)
         features['readability_score'] = self.get_readability_score(text)
         
+        # BERTScore features (if reference text is provided)
+        if reference_text:
+            bert_scores = self.compute_bert_score(text, reference_text)
+            features.update(bert_scores)
+        
         return features
     
-    def run_all_features(self, texts, code_samples=None, include_similarity=True):
+    def run_all_features(self, texts, reference_texts=None, code_samples=None, include_similarity=True):
         """
         Unified pipeline to extract all textual features for a list of texts.
         
         Args:
             texts (list): List of text strings to analyze
+            reference_texts (list, optional): List of reference texts for BERTScore analysis
             code_samples (dict): Dictionary of code samples for similarity analysis
             include_similarity (bool): Whether to include cosine similarity analysis
         
@@ -184,7 +304,12 @@ class TextualFeatureExtractor:
         results = []
         
         for i, text in enumerate(texts):
-            result = self.extract_features(text)
+            # Get reference text if available
+            reference_text = None
+            if reference_texts and i < len(reference_texts):
+                reference_text = reference_texts[i]
+            
+            result = self.extract_features(text, reference_text)
             result['text_id'] = i
             
             # Add similarity features if requested
@@ -228,21 +353,39 @@ def main():
         "Add SQL query optimization using `EXPLAIN ANALYZE` to identify bottlenecks."
     ]
     
+    # Sample reference texts for BERTScore comparison
+    reference_texts = [
+        "Resolve null pointer exception in session management.",
+        "What is the best approach for API rate limiting?",
+        "Optimize database queries with performance analysis tools."
+    ]
+    
     # Initialize extractor
     extractor = TextualFeatureExtractor()
     
-    # Run analysis
-    results = extractor.run_all_features(
+    # Run analysis without BERTScore
+    print("Analysis without BERTScore:")
+    print("=" * 50)
+    results_basic = extractor.run_all_features(
         sample_texts, 
         code_samples=DEFAULT_CODE_SAMPLES,
         include_similarity=True
     )
+    print(results_basic.round(4))
+    print()
     
-    print("Textual Features Analysis Results:")
+    # Run analysis with BERTScore
+    print("Analysis with BERTScore:")
     print("=" * 50)
-    print(results.round(4))
+    results_with_bert = extractor.run_all_features(
+        sample_texts,
+        reference_texts=reference_texts,
+        code_samples=DEFAULT_CODE_SAMPLES,
+        include_similarity=True
+    )
+    print(results_with_bert.round(4))
     
-    return results
+    return results_with_bert
 
 
 if __name__ == "__main__":
